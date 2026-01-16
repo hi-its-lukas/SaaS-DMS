@@ -359,8 +359,6 @@ def scan_sage_archive(self):
                         skipped_count += 1
                         continue
                     
-                    doc_type, is_personnel, category, description = classify_sage_document(file_path.name)
-                    
                     month_folder = None
                     relative_path = file_path.relative_to(tenant_folder)
                     path_parts = relative_path.parts
@@ -371,20 +369,19 @@ def scan_sage_archive(self):
                     mime_type = get_mime_type(str(file_path))
                     
                     employee = None
-                    status = 'COMPANY' if not is_personnel else 'UNASSIGNED'
+                    status = 'UNASSIGNED'
                     needs_review = False
                     dm_result = None
+                    is_personnel = False
+                    doc_type = 'UNBEKANNT'
+                    category = None
+                    description = 'Unbekanntes Dokument'
                     
-                    if is_personnel and file_path.suffix.lower() == '.pdf':
+                    if file_path.suffix.lower() == '.pdf':
                         dm_result = extract_employee_from_datamatrix(str(file_path))
                         
-                        if not dm_result['success']:
-                            needs_review = True
-                            status = 'REVIEW_NEEDED'
-                            log_system_event('WARNING', 'SageScanner', 
-                                f"DataMatrix-Fehler bei {file_path.name}: {dm_result['error']}",
-                                {'file': str(file_path)})
-                        elif dm_result['employee_ids']:
+                        if dm_result['success'] and dm_result['employee_ids']:
+                            is_personnel = True
                             for emp_id in dm_result['employee_ids']:
                                 employee = find_employee_by_id(emp_id, tenant=tenant)
                                 if employee:
@@ -394,9 +391,23 @@ def scan_sage_archive(self):
                             if not employee:
                                 needs_review = True
                                 status = 'REVIEW_NEEDED'
-                        elif not dm_result['codes']:
+                            
+                            doc_type, _, category, description = classify_sage_document(file_path.name)
+                        elif dm_result['success'] and dm_result['codes']:
+                            is_personnel = True
                             needs_review = True
                             status = 'REVIEW_NEEDED'
+                            doc_type, _, category, description = classify_sage_document(file_path.name)
+                        else:
+                            doc_type, is_personnel, category, description = classify_sage_document(file_path.name)
+                            if is_personnel:
+                                needs_review = True
+                                status = 'REVIEW_NEEDED'
+                            else:
+                                status = 'COMPANY'
+                    else:
+                        doc_type, is_personnel, category, description = classify_sage_document(file_path.name)
+                        status = 'COMPANY' if not is_personnel else 'UNASSIGNED'
                     
                     metadata = {
                         'original_path': str(file_path),
