@@ -34,6 +34,23 @@ def get_mime_type(file_path):
 
 
 def extract_employee_from_datamatrix(file_path):
+    """
+    Extrahiert DataMatrix-Codes aus einem PDF.
+    
+    Returns:
+        dict with keys:
+            'success': bool - True if processing succeeded
+            'error': str or None - Error message if failed
+            'codes': list - List of extracted code data
+            'employee_ids': list - Parsed employee IDs from codes
+    """
+    result = {
+        'success': False,
+        'error': None,
+        'codes': [],
+        'employee_ids': []
+    }
+    
     try:
         import fitz
         from pylibdmtx.pylibdmtx import decode
@@ -41,7 +58,6 @@ def extract_employee_from_datamatrix(file_path):
         import io
         
         doc = fitz.open(file_path)
-        employee_ids = []
         
         for page_num in range(len(doc)):
             page = doc[page_num]
@@ -51,28 +67,242 @@ def extract_employee_from_datamatrix(file_path):
             
             decoded = decode(img)
             for d in decoded:
-                data = d.data.decode('utf-8')
-                employee_ids.append({'page': page_num, 'data': data})
+                raw_data = d.data.decode('utf-8')
+                result['codes'].append({'page': page_num, 'raw': raw_data})
+                
+                emp_id = parse_employee_id_from_datamatrix(raw_data)
+                if emp_id and emp_id not in result['employee_ids']:
+                    result['employee_ids'].append(emp_id)
         
         doc.close()
-        return employee_ids
+        result['success'] = True
+        return result
+        
     except Exception as e:
         logger.warning(f"DataMatrix extraction failed for {file_path}: {e}")
+        result['error'] = str(e)
+        return result
+
+
+def parse_employee_id_from_datamatrix(raw_data):
+    """
+    Parst die Mitarbeiter-ID aus den DataMatrix-Rohdaten.
+    Sage DataMatrix kann verschiedene Formate haben.
+    """
+    if not raw_data:
         return None
+    
+    raw_data = raw_data.strip()
+    
+    if raw_data.isdigit():
+        return raw_data
+    
+    patterns = [
+        r'PersNr[:\s]*(\d+)',
+        r'Personalnummer[:\s]*(\d+)',
+        r'MA[:\s]*(\d+)',
+        r'^(\d{4,8})$',
+        r'\|(\d+)\|',
+        r';(\d+);',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, raw_data, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    
+    parts = re.split(r'[|;,\s]+', raw_data)
+    for part in parts:
+        if part.isdigit() and 3 <= len(part) <= 10:
+            return part
+    
+    return None
 
 
 def find_employee_by_id(employee_id, tenant=None):
+    """
+    Sucht einen Mitarbeiter anhand der ID.
+    Versucht verschiedene ID-Formate.
+    """
+    if not employee_id:
+        return None
+    
     try:
         queryset = Employee.objects.all()
         if tenant:
             queryset = queryset.filter(tenant=tenant)
-        return queryset.get(employee_id=employee_id)
-    except Employee.DoesNotExist:
+        
+        employee = queryset.filter(employee_id=employee_id).first()
+        if employee:
+            return employee
+        
+        if employee_id.isdigit():
+            employee = queryset.filter(employee_id=employee_id.lstrip('0')).first()
+            if employee:
+                return employee
+            employee = queryset.filter(employee_id=employee_id.zfill(8)).first()
+            if employee:
+                return employee
+        
         return None
+    except Exception:
+        return None
+
+
+SAGE_DOCUMENT_TYPES = {
+    'LOHNSCHEINE': {
+        'patterns': ['Lohnscheine', 'Korrekturlohnscheine'],
+        'is_personnel': True,
+        'category': '05.01',
+        'description': 'Lohnabrechnung'
+    },
+    'LOHNSTEUERBESCHEINIGUNG': {
+        'patterns': ['Elektronische Lohnsteuerbescheinigung', 'Lohnsteuerbescheinigung'],
+        'is_personnel': True,
+        'category': '05.02',
+        'description': 'Lohnsteuerbescheinigung'
+    },
+    'MELDEBESCHEINIGUNG': {
+        'patterns': ['Meldebescheinigung'],
+        'is_personnel': True,
+        'category': '03.03',
+        'description': 'SV-Meldebescheinigung'
+    },
+    'ENTGELTBESCHEINIGUNG': {
+        'patterns': ['Entgeltbescheinigung'],
+        'is_personnel': True,
+        'category': '07.01',
+        'description': 'Entgeltbescheinigung'
+    },
+    'BEITRAGSNACHWEIS': {
+        'patterns': ['Beitragsnachweis', 'Protokoll Beitragsnachweis'],
+        'is_personnel': False,
+        'category': '05.03',
+        'description': 'Beitragsnachweis'
+    },
+    'LOHNSTEUERANMELDUNG': {
+        'patterns': ['Lohnsteueranmeldung'],
+        'is_personnel': False,
+        'category': '05.02',
+        'description': 'Lohnsteueranmeldung'
+    },
+    'FIBU': {
+        'patterns': ['Fibu-Journal', 'Fibu-Buchungsjournal'],
+        'is_personnel': False,
+        'category': '05.04',
+        'description': 'Fibu-Buchungen'
+    },
+    'LOHNJOURNAL': {
+        'patterns': ['Lohnjournal', 'Jahreslohnjournal'],
+        'is_personnel': False,
+        'category': '05.01',
+        'description': 'Lohnjournal'
+    },
+    'LOHNKONTO': {
+        'patterns': ['Lohnkonto', 'Jahreslohnkonto', 'erweitertes Lohnkonto'],
+        'is_personnel': True,
+        'category': '05.01',
+        'description': 'Lohnkonto'
+    },
+    'BERUFSGENOSSENSCHAFT': {
+        'patterns': ['Berufsgenossenschaftsliste', 'Jahreslohnnachweis Berufsgenossenschaft'],
+        'is_personnel': False,
+        'category': '07.02',
+        'description': 'Berufsgenossenschaft'
+    },
+    'ELSTAM': {
+        'patterns': ['ELStAM'],
+        'is_personnel': False,
+        'category': '05.02',
+        'description': 'ELStAM-Meldung'
+    },
+    'ERSTATTUNG': {
+        'patterns': ['Erstattungsantrag'],
+        'is_personnel': False,
+        'category': '07.01',
+        'description': 'Erstattungsantrag'
+    },
+    'KUG': {
+        'patterns': ['Saison-KUG', 'Saison-Kug'],
+        'is_personnel': False,
+        'category': '06.03',
+        'description': 'Kurzarbeitergeld'
+    },
+    'STUNDENKALENDARIUM': {
+        'patterns': ['Stundenkalendarium', 'Soll-Istprotokoll'],
+        'is_personnel': False,
+        'category': '06.02',
+        'description': 'Zeitnachweis'
+    },
+    'ZVK': {
+        'patterns': ['ZVK-LAK'],
+        'is_personnel': False,
+        'category': '05.03',
+        'description': 'ZVK-Beitragsliste'
+    },
+    'DIFFERENZABRECHNUNG': {
+        'patterns': ['Differenzabrechnung'],
+        'is_personnel': False,
+        'category': '05.01',
+        'description': 'Differenzabrechnung'
+    },
+    'RESTURLAUB': {
+        'patterns': ['Resturlaub'],
+        'is_personnel': False,
+        'category': '06.01',
+        'description': 'Urlaubsübersicht'
+    },
+    'LST_JAHRESAUSGLEICH': {
+        'patterns': ['LSt-Jahresausgleich'],
+        'is_personnel': False,
+        'category': '05.02',
+        'description': 'Lohnsteuer-Jahresausgleich'
+    },
+    'BUCHUNGSSTAPEL': {
+        'patterns': ['EXTF_Buchungsstapel', 'Buchungsstapel'],
+        'is_personnel': False,
+        'category': '05.04',
+        'description': 'DATEV-Export'
+    },
+    'SAGE_EXPORT': {
+        'patterns': ['E_Sage_'],
+        'is_personnel': False,
+        'category': '05.04',
+        'description': 'Sage-Export'
+    },
+}
+
+
+def classify_sage_document(filename):
+    """
+    Klassifiziert ein Sage-Dokument anhand des Dateinamens.
+    Gibt (doc_type, is_personnel, category, description) zurück.
+    """
+    for doc_type, config in SAGE_DOCUMENT_TYPES.items():
+        for pattern in config['patterns']:
+            if pattern.lower() in filename.lower():
+                return (
+                    doc_type,
+                    config['is_personnel'],
+                    config['category'],
+                    config['description']
+                )
+    return ('UNBEKANNT', False, None, 'Unbekanntes Dokument')
 
 
 @shared_task(bind=True, max_retries=3)
 def scan_sage_archive(self):
+    """
+    Scannt das Sage-Archiv und importiert Dokumente.
+    
+    Wichtig: Dateien bleiben im Originalordner - nur Hash wird gespeichert.
+    Struktur: sage_archiv/00000001/YYYYMM/Dateiname.pdf
+    - 00000001 = Mandantenkennung
+    - YYYYMM = Abrechnungsmonat
+    
+    Personalunterlagen (Lohnscheine, etc.) werden via DataMatrix-Code getrennt.
+    Firmendokumente (Beitragsnachweis, etc.) werden nach Dateiname klassifiziert.
+    """
     sage_path = Path(settings.SAGE_ARCHIVE_PATH)
     
     if not sage_path.exists():
@@ -83,9 +313,13 @@ def scan_sage_archive(self):
     skipped_count = 0
     error_count = 0
     tenant_count = 0
+    personnel_docs = 0
+    company_docs = 0
     
-    supported_extensions = {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.tiff', '.txt'}
+    supported_extensions = {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.tiff', '.txt', '.csv'}
+    skip_files = {'thumbs.db', 'desktop.ini', '.ds_store'}
     tenant_folder_pattern = re.compile(r'^\d{8}$')
+    month_folder_pattern = re.compile(r'^\d{6}$')
     
     try:
         for tenant_folder in sage_path.iterdir():
@@ -109,6 +343,9 @@ def scan_sage_archive(self):
                 if not file_path.is_file():
                     continue
                 
+                if file_path.name.lower() in skip_files:
+                    continue
+                
                 if file_path.suffix.lower() not in supported_extensions:
                     continue
                 
@@ -122,51 +359,62 @@ def scan_sage_archive(self):
                         skipped_count += 1
                         continue
                     
+                    doc_type, is_personnel, category, description = classify_sage_document(file_path.name)
+                    
+                    month_folder = None
+                    relative_path = file_path.relative_to(tenant_folder)
+                    path_parts = relative_path.parts
+                    if len(path_parts) >= 2 and month_folder_pattern.match(path_parts[0]):
+                        month_folder = path_parts[0]
+                    
                     encrypted_content = encrypt_data(content)
                     mime_type = get_mime_type(str(file_path))
                     
                     employee = None
-                    status = 'UNASSIGNED'
+                    status = 'COMPANY' if not is_personnel else 'UNASSIGNED'
                     needs_review = False
-                    doc_type = 'UNBEKANNT'
-                    doc_type_confidence = 0.0
-                    ocr_text = ''
-                    category_suggestion = None
+                    dm_result = None
                     
-                    if file_path.suffix.lower() == '.pdf':
-                        dm_data = extract_employee_from_datamatrix(str(file_path))
-                        if dm_data is None:
+                    if is_personnel and file_path.suffix.lower() == '.pdf':
+                        dm_result = extract_employee_from_datamatrix(str(file_path))
+                        
+                        if not dm_result['success']:
                             needs_review = True
                             status = 'REVIEW_NEEDED'
-                        elif dm_data:
-                            first_emp_data = dm_data[0].get('data', '')
-                            employee = find_employee_by_id(first_emp_data, tenant=tenant)
-                            if employee:
-                                status = 'ASSIGNED'
-                            else:
-                                status = 'UNASSIGNED'
-                    
-                    try:
-                        ocr_result = process_document_with_ocr(content, mime_type)
-                        if ocr_result:
-                            ocr_text = ocr_result.get('text', '')[:10000]
-                            doc_type = ocr_result.get('doc_type', 'UNBEKANNT')
-                            doc_type_confidence = ocr_result.get('doc_type_confidence', 0.0)
-                            category_suggestion = ocr_result.get('category_suggestion')
+                            log_system_event('WARNING', 'SageScanner', 
+                                f"DataMatrix-Fehler bei {file_path.name}: {dm_result['error']}",
+                                {'file': str(file_path)})
+                        elif dm_result['employee_ids']:
+                            for emp_id in dm_result['employee_ids']:
+                                employee = find_employee_by_id(emp_id, tenant=tenant)
+                                if employee:
+                                    status = 'ASSIGNED'
+                                    break
                             
-                            if not employee and ocr_result.get('employee_info'):
-                                emp_info = ocr_result['employee_info']
-                                if emp_info.get('employee_id'):
-                                    employee = find_employee_by_id(emp_info['employee_id'], tenant=tenant)
-                                    if employee:
-                                        status = 'ASSIGNED'
-                                        log_system_event('INFO', 'OCR', 
-                                            f"Mitarbeiter via OCR erkannt: {employee.first_name} {employee.last_name}",
-                                            {'document': file_path.name, 'employee_id': emp_info['employee_id']})
-                    except Exception as ocr_error:
-                        log_system_event('WARNING', 'OCR', 
-                            f"OCR-Verarbeitung fehlgeschlagen: {file_path.name}",
-                            {'error': str(ocr_error)})
+                            if not employee:
+                                needs_review = True
+                                status = 'REVIEW_NEEDED'
+                        elif not dm_result['codes']:
+                            needs_review = True
+                            status = 'REVIEW_NEEDED'
+                    
+                    metadata = {
+                        'original_path': str(file_path),
+                        'needs_review': needs_review,
+                        'tenant_code': tenant_code,
+                        'doc_type': doc_type,
+                        'doc_type_description': description,
+                        'is_personnel_document': is_personnel,
+                        'category_code': category,
+                        'month_folder': month_folder,
+                    }
+                    
+                    if dm_result:
+                        metadata['datamatrix'] = {
+                            'success': dm_result['success'],
+                            'codes_found': len(dm_result['codes']),
+                            'employee_ids': dm_result['employee_ids'],
+                        }
                     
                     document = Document.objects.create(
                         tenant=tenant,
@@ -180,15 +428,7 @@ def scan_sage_archive(self):
                         status=status,
                         source='SAGE',
                         sha256_hash=file_hash,
-                        metadata={
-                            'original_path': str(file_path),
-                            'needs_review': needs_review,
-                            'tenant_code': tenant_code,
-                            'doc_type': doc_type,
-                            'doc_type_confidence': doc_type_confidence,
-                            'category_suggestion': category_suggestion,
-                            'ocr_text_preview': ocr_text[:500] if ocr_text else ''
-                        }
+                        metadata=metadata
                     )
                     
                     ProcessedFile.objects.create(
@@ -199,6 +439,10 @@ def scan_sage_archive(self):
                     )
                     
                     processed_count += 1
+                    if is_personnel:
+                        personnel_docs += 1
+                    else:
+                        company_docs += 1
                     
                     if needs_review:
                         log_system_event('WARNING', 'SageScanner', 
@@ -212,11 +456,14 @@ def scan_sage_archive(self):
                         {'error': str(e), 'tenant': tenant_code})
         
         log_system_event('INFO', 'SageScanner', 
-            f"Scan complete: {processed_count} processed, {skipped_count} skipped, {error_count} errors, {tenant_count} new tenants")
+            f"Scan abgeschlossen: {processed_count} verarbeitet ({personnel_docs} Personal, {company_docs} Firma), "
+            f"{skipped_count} übersprungen, {error_count} Fehler, {tenant_count} neue Mandanten")
         
         return {
             'status': 'success',
             'processed': processed_count,
+            'personnel_documents': personnel_docs,
+            'company_documents': company_docs,
             'skipped': skipped_count,
             'errors': error_count,
             'new_tenants': tenant_count
