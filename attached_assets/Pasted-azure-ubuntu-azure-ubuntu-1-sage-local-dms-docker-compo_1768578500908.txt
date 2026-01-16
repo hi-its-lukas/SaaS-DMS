@@ -1,0 +1,36 @@
+azure-ubuntu@azure-ubuntu-1:~/sage-local-dms$ docker-compose down
+docker-compose up -d
+Stopping sage-local-dms-nginx-1         ... done
+Stopping sage-local-dms-samba-1         ... done
+Stopping sage-local-dms-celery_beat-1   ... done
+Stopping sage-local-dms-web-1           ... done
+Stopping sage-local-dms-celery_worker-1 ... done
+Removing sage-local-dms-nginx-1              ... done
+Removing sage-local-dms-samba-1              ... done
+Removing sage-local-dms-celery_beat-1        ... done
+Removing sage-local-dms-web-1                ... done
+Removing sage-local-dms-celery_worker-1      ... done
+Removing f5d846929046_sage-local-dms-db-1    ... done
+Removing 8a32cd02dcc1_sage-local-dms-redis-1 ... done
+Removing network sage-local-dms_default
+Creating network "sage-local-dms_default" with the default driver
+Creating sage-local-dms_db_1    ... done
+Creating sage-local-dms_redis_1 ... done
+Creating sage-local-dms_celery_worker_1 ... done
+Creating sage-local-dms_web_1           ... done
+Creating sage-local-dms_celery_beat_1   ... done
+Creating sage-local-dms_samba_1         ... done
+Creating sage-local-dms_nginx_1         ... done
+azure-ubuntu@azure-ubuntu-1:~/sage-local-dms$ sleep 15
+docker-compose ps
+             Name                           Command                       State                                  Ports                        
+----------------------------------------------------------------------------------------------------------------------------------------------
+sage-local-dms_celery_beat_1     celery -A dms_project beat ...   Up                                                                          
+sage-local-dms_celery_worker_1   celery -A dms_project work ...   Up                                                                          
+sage-local-dms_db_1              docker-entrypoint.sh postgres    Up                      5432/tcp                                            
+sage-local-dms_nginx_1           /docker-entrypoint.sh ngin ...   Up                      0.0.0.0:8080->80/tcp,:::8080->80/tcp                
+sage-local-dms_redis_1           docker-entrypoint.sh redis ...   Up                      6379/tcp                                            
+sage-local-dms_samba_1           /sbin/tini -- /usr/bin/sam ...   Up (health: starting)   137/udp, 138/udp, 139/tcp,                          
+                                                                                          0.0.0.0:445->445/tcp,:::445->445/tcp                
+sage-local-dms_web_1             ./entrypoint.sh                  Up                      8000/tcp                                            
+azure-ubuntu@azure-ubuntu-1:~/sage-local-dms$ 
