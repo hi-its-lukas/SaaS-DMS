@@ -11,6 +11,9 @@ packages = ["cargo", "file", "freetype", "gumbo", "harfbuzz", "imagemagick", "jb
 [userenv.shared]
 ENCRYPTION_KEY = "1P3OFKmP8ugSQHVJC_H7Kp_5QZ2ojGlOArZP81Jer_Y="
 
+[userenv.development]
+DEBUG = "True"
+
 [workflows]
 runButton = "Project"
 

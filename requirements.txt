@@ -1,0 +1,15 @@
+django>=5.0
+celery>=5.3
+redis>=5.0
+psycopg2-binary>=2.9
+pymupdf>=1.23
+pylibdmtx>=0.1.10
+cryptography>=41.0
+O365>=2.0
+pdfkit>=1.0
+gunicorn>=21.0
+django-celery-beat>=2.5
+python-magic>=0.4
+Pillow>=10.0
+whitenoise>=6.6
+dj-database-url>=2.1

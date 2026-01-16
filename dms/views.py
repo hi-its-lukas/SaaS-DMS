@@ -31,10 +31,22 @@ def index(request):
     })
 
 
+@login_required
 def upload_page(request):
     return render(request, 'dms/upload.html')
 
 
+def _can_access_document(user, document):
+    if user.has_perm('dms.view_all_documents'):
+        return True
+    if document.owner == user:
+        return True
+    if hasattr(user, 'employee_profile') and document.employee == user.employee_profile:
+        return True
+    return False
+
+
+@login_required
 @csrf_protect
 @require_http_methods(["POST"])
 def upload_file(request):
@@ -46,6 +58,11 @@ def upload_file(request):
     max_size = 50 * 1024 * 1024
     if uploaded_file.size > max_size:
         return JsonResponse({'success': False, 'error': 'File too large (max 50MB)'}, status=400)
+    
+    allowed_extensions = {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.tiff', '.txt'}
+    file_ext = '.' + uploaded_file.name.rsplit('.', 1)[-1].lower() if '.' in uploaded_file.name else ''
+    if file_ext not in allowed_extensions:
+        return JsonResponse({'success': False, 'error': 'File type not allowed'}, status=400)
     
     try:
         content = uploaded_file.read()
@@ -62,14 +79,14 @@ def upload_file(request):
         document = Document.objects.create(
             title=title,
             original_filename=uploaded_file.name,
-            file_extension='.' + uploaded_file.name.rsplit('.', 1)[-1] if '.' in uploaded_file.name else '',
+            file_extension=file_ext,
             mime_type=mime_type,
             encrypted_content=encrypted_content,
             file_size=len(content),
             status='UNASSIGNED',
             source='WEB',
             sha256_hash=file_hash,
-            owner=request.user if request.user.is_authenticated else None,
+            owner=request.user,
         )
         
         return JsonResponse({
@@ -79,12 +96,19 @@ def upload_file(request):
         })
         
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse({'success': False, 'error': 'Upload failed. Please try again.'}, status=500)
 
 
 @login_required
 def document_list(request):
-    documents = Document.objects.all()
+    if request.user.has_perm('dms.view_all_documents'):
+        documents = Document.objects.all()
+    elif hasattr(request.user, 'employee_profile'):
+        documents = Document.objects.filter(
+            Q(employee=request.user.employee_profile) | Q(owner=request.user)
+        )
+    else:
+        documents = Document.objects.filter(owner=request.user)
     
     status = request.GET.get('status')
     source = request.GET.get('source')
@@ -115,10 +139,8 @@ def document_list(request):
 def document_detail(request, pk):
     document = get_object_or_404(Document, pk=pk)
     
-    if not request.user.has_perm('dms.view_all_documents'):
-        if hasattr(request.user, 'employee_profile'):
-            if document.employee != request.user.employee_profile:
-                return HttpResponse('Permission denied', status=403)
+    if not _can_access_document(request.user, document):
+        return HttpResponse('Permission denied', status=403)
     
     return render(request, 'dms/document_detail.html', {'document': document})
 
@@ -127,10 +149,8 @@ def document_detail(request, pk):
 def document_download(request, pk):
     document = get_object_or_404(Document, pk=pk)
     
-    if not request.user.has_perm('dms.view_all_documents'):
-        if hasattr(request.user, 'employee_profile'):
-            if document.employee != request.user.employee_profile:
-                return HttpResponse('Permission denied', status=403)
+    if not _can_access_document(request.user, document):
+        return HttpResponse('Permission denied', status=403)
     
     try:
         decrypted_content = decrypt_data(document.encrypted_content)
@@ -142,19 +162,19 @@ def document_download(request, pk):
         response['Content-Disposition'] = f'attachment; filename="{document.original_filename}"'
         return response
     except Exception as e:
-        return HttpResponse(f'Error decrypting file: {str(e)}', status=500)
+        return HttpResponse('Error downloading file', status=500)
 
 
 @login_required
 def task_list(request):
-    tasks = Task.objects.all()
+    if request.user.has_perm('dms.manage_documents'):
+        tasks = Task.objects.all()
+    else:
+        tasks = Task.objects.filter(assigned_to=request.user)
     
     status = request.GET.get('status')
     if status:
         tasks = tasks.filter(status=status)
-    
-    if not request.user.has_perm('dms.manage_documents'):
-        tasks = tasks.filter(assigned_to=request.user)
     
     paginator = Paginator(tasks, 25)
     page = request.GET.get('page', 1)

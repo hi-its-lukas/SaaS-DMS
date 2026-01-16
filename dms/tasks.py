@@ -198,6 +198,15 @@ def scan_manual_input(self):
                     content = f.read()
                 
                 file_hash = calculate_sha256(content)
+                
+                if ProcessedFile.objects.filter(sha256_hash=file_hash).exists():
+                    dest_path = processed_path / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_dup_{file_path.name}"
+                    file_path.rename(dest_path)
+                    log_system_event('INFO', 'ManualScanner', 
+                        f"Skipped duplicate file: {file_path.name}",
+                        {'hash': file_hash[:16]})
+                    continue
+                
                 encrypted_content = encrypt_data(content)
                 mime_type = get_mime_type(str(file_path))
                 
@@ -212,6 +221,12 @@ def scan_manual_input(self):
                     source='MANUAL',
                     sha256_hash=file_hash,
                     metadata={'original_path': str(file_path)}
+                )
+                
+                ProcessedFile.objects.create(
+                    sha256_hash=file_hash,
+                    original_path=str(file_path),
+                    document=document
                 )
                 
                 dest_path = processed_path / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file_path.name}"

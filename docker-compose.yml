@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    command: gunicorn dms_project.wsgi:application --bind 0.0.0.0:8000 --workers 4
+    volumes:
+      - static_volume:/app/staticfiles
+      - ./data/sage_archive:/data/sage_archive:ro
+      - ./data/manual_input:/data/manual_input
+      - ./data/email_archive:/data/email_archive
+    expose:
+      - 8000
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=dms
+      - POSTGRES_USER=dms_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+
+  celery_worker:
+    build: .
+    command: celery -A dms_project worker -l INFO
+    volumes:
+      - ./data/sage_archive:/data/sage_archive:ro
+      - ./data/manual_input:/data/manual_input
+      - ./data/email_archive:/data/email_archive
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+
+  celery_beat:
+    build: .
+    command: celery -A dms_project beat -l INFO
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+
+  samba:
+    image: dperson/samba
+    environment:
+      - USER1=dmsuser;${SAMBA_PASSWORD}
+      - SHARE1=Sage_Archive;/shares/sage;no;no;no;dmsuser
+      - SHARE2=Manual_Scan;/shares/manual;yes;no;no;dmsuser
+    volumes:
+      - ./data/sage_archive:/shares/sage:ro
+      - ./data/manual_input:/shares/manual
+    ports:
+      - "445:445"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - static_volume:/app/staticfiles:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_volume:

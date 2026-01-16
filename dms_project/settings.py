@@ -6,9 +6,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-secret-key-change-in-production')
 
-DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
+DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',') if os.environ.get('ALLOWED_HOSTS') else ['*']
 CSRF_TRUSTED_ORIGINS = ['https://*.replit.dev', 'https://*.repl.co']
 
 INSTALLED_APPS = [
