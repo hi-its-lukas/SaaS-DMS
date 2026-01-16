@@ -22,9 +22,12 @@ def generate_fernet_key():
     from cryptography.fernet import Fernet
     return Fernet.generate_key().decode()
 
-def generate_password(length=16):
+def generate_password(length=16, url_safe=False):
     """Generiert ein sicheres Passwort."""
-    chars = string.ascii_letters + string.digits + '!@#$%^&*()'
+    if url_safe:
+        chars = string.ascii_letters + string.digits
+    else:
+        chars = string.ascii_letters + string.digits + '!@#$%^&*()'
     return ''.join(secrets.choice(chars) for _ in range(length))
 
 def create_env_file():
@@ -40,7 +43,7 @@ def create_env_file():
     
     django_secret = generate_secret_key()
     encryption_key = generate_fernet_key()
-    db_password = generate_password(20)
+    db_password = generate_password(20, url_safe=True)
     
     env_content = f"""# DMS Konfiguration - Automatisch generiert
 # Technische Grundkonfiguration - NICHT MANUELL BEARBEITEN
