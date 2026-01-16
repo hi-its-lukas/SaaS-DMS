@@ -66,11 +66,7 @@
                 </td>
                 <td style="color: var(--text-secondary);">{{ doc.get_source_display }}</td>
                 <td>{{ doc.employee.full_name|default:"-" }}</td>
-                <td style="color: var(--text-secondary);">
-                    {% if doc.file_size < 1024 %}{{ doc.file_size }} B
-                    {% elif doc.file_size < 1048576 %}{{ doc.file_size|floatformat:0|divisibleby:1024 }} KB
-                    {% else %}{{ doc.file_size|floatformat:1|divisibleby:1048576 }} MB{% endif %}
-                </td>
+                <td style="color: var(--text-secondary);">{{ doc.file_size_display }}</td>
                 <td style="color: var(--text-secondary);">{{ doc.created_at|date:"d.m.Y" }}</td>
                 <td style="text-align: right;">
                     <a href="{% url 'dms:document_detail' doc.pk %}" class="btn btn-sm btn-outline">

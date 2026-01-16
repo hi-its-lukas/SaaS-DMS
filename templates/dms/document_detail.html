@@ -25,11 +25,7 @@
             <tr><th>Quelle</th><td>{{ document.get_source_display }}</td></tr>
             <tr><th>Typ</th><td>{{ document.document_type.name|default:"Nicht zugewiesen" }}</td></tr>
             <tr><th>MIME-Typ</th><td>{{ document.mime_type }}</td></tr>
-            <tr><th>Größe</th><td>
-                {% if document.file_size < 1024 %}{{ document.file_size }} Bytes
-                {% elif document.file_size < 1048576 %}{{ document.file_size|floatformat:1|divisibleby:1024 }} KB
-                {% else %}{{ document.file_size|floatformat:2|divisibleby:1048576 }} MB{% endif %}
-            </td></tr>
+            <tr><th>Größe</th><td>{{ document.file_size_display }}</td></tr>
         </table>
     </div>
     

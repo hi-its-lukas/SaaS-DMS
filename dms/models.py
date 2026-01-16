@@ -170,6 +170,19 @@ class Document(models.Model):
         self.archived_at = timezone.now()
         self.save()
 
+    @property
+    def file_size_display(self):
+        """Human-readable file size."""
+        if not self.file_size:
+            return "0 B"
+        size = self.file_size
+        if size < 1024:
+            return f"{size} B"
+        elif size < 1024 * 1024:
+            return f"{size / 1024:.1f} KB"
+        else:
+            return f"{size / (1024 * 1024):.2f} MB"
+
     class Meta:
         ordering = ['-created_at']
         permissions = [
