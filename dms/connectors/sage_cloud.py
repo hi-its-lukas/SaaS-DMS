@@ -59,22 +59,29 @@ class SageCloudConnector:
         try:
             self.session = requests.Session()
             self.session.headers.update({
-                'Authorization': f'Bearer {api_key}',
+                'X-Auth-Token': api_key,
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             })
             
             response = self.session.get(
-                f"{self.settings.sage_cloud_api_url.rstrip('/')}/health",
+                f"{self.settings.sage_cloud_api_url.rstrip('/')}/employees",
+                params={'page': 1},
                 timeout=10
             )
             
-            if response.status_code in [200, 401, 403, 404]:
+            if response.status_code == 200:
                 self._authenticated = True
-                self._log('INFO', 'Verbindung zu Sage Cloud hergestellt')
+                self._log('INFO', 'Verbindung zu Sage HR Cloud hergestellt')
                 return True
+            elif response.status_code == 401:
+                self._log('ERROR', 'Sage HR Cloud: Authentifizierung fehlgeschlagen (ungültiger API-Schlüssel)')
+                return False
+            elif response.status_code == 403:
+                self._log('ERROR', 'Sage HR Cloud: Zugriff verweigert')
+                return False
             else:
-                self._log('ERROR', f'Sage Cloud Verbindung fehlgeschlagen: HTTP {response.status_code}')
+                self._log('ERROR', f'Sage HR Cloud Verbindung fehlgeschlagen: HTTP {response.status_code}')
                 return False
                 
         except Timeout:
@@ -87,38 +94,90 @@ class SageCloudConnector:
     def is_connected(self) -> bool:
         return self._authenticated and self.session is not None
     
-    def fetch_employees(self) -> List[Dict[str, Any]]:
-        """Fetch all employees from Sage Cloud"""
-        data = self._api_request('/employees')
-        if not data:
-            return []
+    def fetch_employees(self, include_terminated: bool = False) -> List[Dict[str, Any]]:
+        """Fetch all employees from Sage HR Cloud API
         
-        employees_list = data.get('data', data) if isinstance(data, dict) else data
-        
+        API: GET https://subdomain.sage.hr/api/employees
+        Auth: X-Auth-Token header
+        """
         employees = []
-        for emp in employees_list:
-            employees.append({
-                'sage_cloud_id': str(emp.get('id', '')),
-                'employee_id': emp.get('employee_number', emp.get('staff_number', str(emp.get('id', '')))),
-                'first_name': emp.get('first_name', emp.get('firstname', '')),
-                'last_name': emp.get('last_name', emp.get('surname', emp.get('lastname', ''))),
-                'email': emp.get('email', emp.get('work_email', '')),
-                'department_name': emp.get('department', emp.get('department_name', '')),
-                'position': emp.get('position', emp.get('job_title', '')),
-                'entry_date': emp.get('start_date', emp.get('hire_date', emp.get('employment_start_date'))),
-                'exit_date': emp.get('termination_date', emp.get('leave_date')),
-                'is_active': emp.get('status', 'active').lower() == 'active',
-                'raw_data': emp
-            })
+        page = 1
         
-        self._log('INFO', f'{len(employees)} Mitarbeiter von Sage Cloud abgerufen')
+        while True:
+            data = self._api_request('/employees', {'page': page})
+            if not data:
+                break
+            
+            employees_list = data.get('data', [])
+            if not employees_list:
+                break
+            
+            for emp in employees_list:
+                employees.append({
+                    'sage_cloud_id': str(emp.get('id', '')),
+                    'employee_id': emp.get('employee_number', str(emp.get('id', ''))),
+                    'first_name': emp.get('first_name', ''),
+                    'last_name': emp.get('last_name', ''),
+                    'email': emp.get('email', ''),
+                    'department_name': emp.get('team', ''),
+                    'team_id': emp.get('team_id'),
+                    'position': emp.get('position', ''),
+                    'position_id': emp.get('position_id'),
+                    'entry_date': emp.get('employment_start_date'),
+                    'employment_status': emp.get('employment_status', ''),
+                    'is_active': True,
+                    'raw_data': emp
+                })
+            
+            page += 1
+            if len(employees_list) < 25:
+                break
+        
+        if include_terminated:
+            page = 1
+            while True:
+                data = self._api_request('/terminated-employees', {'page': page})
+                if not data:
+                    break
+                
+                terminated_list = data.get('data', [])
+                if not terminated_list:
+                    break
+                
+                for emp in terminated_list:
+                    employees.append({
+                        'sage_cloud_id': str(emp.get('id', '')),
+                        'employee_id': emp.get('employee_number', str(emp.get('id', ''))),
+                        'first_name': emp.get('first_name', ''),
+                        'last_name': emp.get('last_name', ''),
+                        'email': emp.get('email', ''),
+                        'department_name': emp.get('team', ''),
+                        'team_id': emp.get('team_id'),
+                        'position': emp.get('position', ''),
+                        'position_id': emp.get('position_id'),
+                        'entry_date': emp.get('employment_start_date'),
+                        'exit_date': emp.get('termination_date'),
+                        'employment_status': emp.get('employment_status', ''),
+                        'is_active': False,
+                        'raw_data': emp
+                    })
+                
+                page += 1
+                if len(terminated_list) < 25:
+                    break
+        
+        self._log('INFO', f'{len(employees)} Mitarbeiter von Sage HR Cloud abgerufen')
         return employees
     
-    def sync_employees(self) -> Dict[str, int]:
-        """Sync employees from Sage Cloud to database and create personnel files"""
+    def sync_employees(self, include_terminated: bool = True) -> Dict[str, int]:
+        """Sync employees from Sage HR Cloud to database and create personnel files
+        
+        Args:
+            include_terminated: Also sync terminated employees (default: True)
+        """
         from ..models import Department, PersonnelFile
         
-        employees_data = self.fetch_employees()
+        employees_data = self.fetch_employees(include_terminated=include_terminated)
         stats = {'created': 0, 'updated': 0, 'files_created': 0, 'errors': 0}
         
         for emp_data in employees_data:
@@ -132,14 +191,14 @@ class SageCloudConnector:
                 entry_date = emp_data.get('entry_date')
                 if entry_date and isinstance(entry_date, str):
                     try:
-                        entry_date = datetime.fromisoformat(entry_date.replace('Z', '+00:00')).date()
+                        entry_date = datetime.strptime(entry_date, '%Y-%m-%d').date()
                     except:
                         entry_date = None
                 
                 exit_date = emp_data.get('exit_date')
                 if exit_date and isinstance(exit_date, str):
                     try:
-                        exit_date = datetime.fromisoformat(exit_date.replace('Z', '+00:00')).date()
+                        exit_date = datetime.strptime(exit_date, '%Y-%m-%d').date()
                     except:
                         exit_date = None
                 
@@ -159,6 +218,7 @@ class SageCloudConnector:
                 
                 if created:
                     stats['created'] += 1
+                    self._log('INFO', f'Mitarbeiter erstellt: {emp_data["first_name"]} {emp_data["last_name"]}')
                 else:
                     stats['updated'] += 1
                 
@@ -170,6 +230,7 @@ class SageCloudConnector:
                 )
                 if pf_created:
                     stats['files_created'] += 1
+                    self._log('INFO', f'Personalakte erstellt für: {employee.full_name}')
                     
             except Exception as e:
                 stats['errors'] += 1
