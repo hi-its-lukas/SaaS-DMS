@@ -1,9 +1,12 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django import forms
 from .models import (
-    Department, Employee, DocumentType, Document, 
-    ProcessedFile, Task, EmailConfig, SystemLog
+    Department, CostCenter, Employee, DocumentType, Document, 
+    ProcessedFile, Task, EmailConfig, SystemLog, SystemSettings,
+    ImportedLeaveRequest, ImportedTimesheet
 )
+from .encryption import encrypt_data, decrypt_data
 
 
 @admin.register(Department)
@@ -12,12 +15,34 @@ class DepartmentAdmin(admin.ModelAdmin):
     search_fields = ['name', 'description']
 
 
+@admin.register(CostCenter)
+class CostCenterAdmin(admin.ModelAdmin):
+    list_display = ['code', 'name', 'is_active', 'created_at']
+    list_filter = ['is_active']
+    search_fields = ['code', 'name']
+
+
 @admin.register(Employee)
 class EmployeeAdmin(admin.ModelAdmin):
-    list_display = ['employee_id', 'full_name', 'email', 'department', 'is_active']
-    list_filter = ['is_active', 'department']
-    search_fields = ['employee_id', 'first_name', 'last_name', 'email']
+    list_display = ['employee_id', 'full_name', 'sage_local_id', 'sage_cloud_id', 'department', 'cost_center', 'is_active']
+    list_filter = ['is_active', 'department', 'cost_center']
+    search_fields = ['employee_id', 'first_name', 'last_name', 'email', 'sage_local_id', 'sage_cloud_id']
     raw_id_fields = ['user']
+    fieldsets = (
+        ('Stammdaten', {
+            'fields': ('employee_id', 'first_name', 'last_name', 'email')
+        }),
+        ('Sage-Verknüpfung', {
+            'fields': ('sage_local_id', 'sage_cloud_id'),
+            'classes': ('collapse',)
+        }),
+        ('Organisation', {
+            'fields': ('department', 'cost_center', 'entry_date', 'exit_date')
+        }),
+        ('Benutzer', {
+            'fields': ('user', 'is_active')
+        }),
+    )
 
 
 @admin.register(DocumentType)
@@ -37,16 +62,16 @@ class DocumentAdmin(admin.ModelAdmin):
     date_hierarchy = 'created_at'
     
     fieldsets = (
-        ('Basic Info', {
+        ('Dokumentinfo', {
             'fields': ('id', 'title', 'original_filename', 'file_extension', 'mime_type')
         }),
-        ('Classification', {
+        ('Klassifizierung', {
             'fields': ('document_type', 'employee', 'owner', 'status', 'source')
         }),
-        ('Metadata', {
+        ('Metadaten', {
             'fields': ('metadata', 'notes', 'sha256_hash', 'file_size')
         }),
-        ('Timestamps', {
+        ('Zeitstempel', {
             'fields': ('created_at', 'updated_at', 'archived_at'),
             'classes': ('collapse',)
         }),
@@ -59,17 +84,17 @@ class DocumentAdmin(admin.ModelAdmin):
             return f"{obj.file_size / 1024:.1f} KB"
         else:
             return f"{obj.file_size / (1024 * 1024):.1f} MB"
-    file_size_display.short_description = 'Size'
+    file_size_display.short_description = 'Größe'
     
     actions = ['mark_as_archived', 'mark_as_review_needed']
     
     def mark_as_archived(self, request, queryset):
         queryset.update(status='ARCHIVED')
-    mark_as_archived.short_description = "Mark selected as Archived"
+    mark_as_archived.short_description = "Als archiviert markieren"
     
     def mark_as_review_needed(self, request, queryset):
         queryset.update(status='REVIEW_NEEDED')
-    mark_as_review_needed.short_description = "Mark selected as Review Needed"
+    mark_as_review_needed.short_description = "Prüfung erforderlich markieren"
 
 
 @admin.register(ProcessedFile)
@@ -94,13 +119,13 @@ class TaskAdmin(admin.ModelAdmin):
     date_hierarchy = 'created_at'
     
     fieldsets = (
-        ('Task Info', {
+        ('Aufgabeninfo', {
             'fields': ('title', 'description', 'document')
         }),
-        ('Assignment', {
+        ('Zuweisung', {
             'fields': ('assigned_to', 'created_by', 'priority', 'status')
         }),
-        ('Dates', {
+        ('Termine', {
             'fields': ('due_date', 'completed_at', 'created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
@@ -112,11 +137,11 @@ class TaskAdmin(admin.ModelAdmin):
     def mark_as_completed(self, request, queryset):
         from django.utils import timezone
         queryset.update(status='COMPLETED', completed_at=timezone.now())
-    mark_as_completed.short_description = "Mark selected as Completed"
+    mark_as_completed.short_description = "Als erledigt markieren"
     
     def mark_as_open(self, request, queryset):
         queryset.update(status='OPEN', completed_at=None)
-    mark_as_open.short_description = "Mark selected as Open"
+    mark_as_open.short_description = "Als offen markieren"
 
 
 @admin.register(EmailConfig)
@@ -127,10 +152,10 @@ class EmailConfigAdmin(admin.ModelAdmin):
     readonly_fields = ['last_sync']
     
     fieldsets = (
-        ('Configuration', {
+        ('Konfiguration', {
             'fields': ('name', 'tenant_id', 'client_id', 'is_active')
         }),
-        ('Mailbox Settings', {
+        ('Postfach-Einstellungen', {
             'fields': ('target_mailbox', 'target_folder')
         }),
         ('Status', {
@@ -162,7 +187,7 @@ class SystemLogAdmin(admin.ModelAdmin):
     
     def message_short(self, obj):
         return obj.message[:100] + '...' if len(obj.message) > 100 else obj.message
-    message_short.short_description = 'Message'
+    message_short.short_description = 'Nachricht'
     
     def has_add_permission(self, request):
         return False
@@ -171,6 +196,118 @@ class SystemLogAdmin(admin.ModelAdmin):
         return False
 
 
+class SystemSettingsAdminForm(forms.ModelForm):
+    sage_local_api_key = forms.CharField(
+        widget=forms.PasswordInput(render_value=True),
+        required=False,
+        label="Sage Local API-Schlüssel"
+    )
+    sage_cloud_api_key = forms.CharField(
+        widget=forms.PasswordInput(render_value=True),
+        required=False,
+        label="Sage Cloud API-Schlüssel"
+    )
+    ms_graph_secret = forms.CharField(
+        widget=forms.PasswordInput(render_value=True),
+        required=False,
+        label="MS Graph Secret"
+    )
+    
+    class Meta:
+        model = SystemSettings
+        exclude = ['encrypted_sage_local_api_key', 'encrypted_sage_cloud_api_key', 'encrypted_ms_graph_secret']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            if self.instance.encrypted_sage_local_api_key:
+                try:
+                    self.fields['sage_local_api_key'].initial = decrypt_data(bytes(self.instance.encrypted_sage_local_api_key)).decode()
+                except Exception:
+                    pass
+            if self.instance.encrypted_sage_cloud_api_key:
+                try:
+                    self.fields['sage_cloud_api_key'].initial = decrypt_data(bytes(self.instance.encrypted_sage_cloud_api_key)).decode()
+                except Exception:
+                    pass
+            if self.instance.encrypted_ms_graph_secret:
+                try:
+                    self.fields['ms_graph_secret'].initial = decrypt_data(bytes(self.instance.encrypted_ms_graph_secret)).decode()
+                except Exception:
+                    pass
+    
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        
+        sage_local_key = self.cleaned_data.get('sage_local_api_key')
+        if sage_local_key:
+            instance.encrypted_sage_local_api_key = encrypt_data(sage_local_key.encode())
+        
+        sage_cloud_key = self.cleaned_data.get('sage_cloud_api_key')
+        if sage_cloud_key:
+            instance.encrypted_sage_cloud_api_key = encrypt_data(sage_cloud_key.encode())
+        
+        ms_graph = self.cleaned_data.get('ms_graph_secret')
+        if ms_graph:
+            instance.encrypted_ms_graph_secret = encrypt_data(ms_graph.encode())
+        
+        if commit:
+            instance.save()
+        return instance
+
+
+@admin.register(SystemSettings)
+class SystemSettingsAdmin(admin.ModelAdmin):
+    form = SystemSettingsAdminForm
+    
+    fieldsets = (
+        ('Sage Local (WCF/SOAP)', {
+            'fields': ('sage_local_wsdl_url', 'sage_local_api_user', 'sage_local_api_key', 'sage_local_timeout'),
+            'description': 'Verbindungseinstellungen für lokalen Sage Desktop'
+        }),
+        ('Sage Cloud (REST)', {
+            'fields': ('sage_cloud_api_url', 'sage_cloud_api_key'),
+            'description': 'Verbindungseinstellungen für Sage Cloud'
+        }),
+        ('Microsoft Graph', {
+            'fields': ('ms_graph_tenant_id', 'ms_graph_client_id', 'ms_graph_secret'),
+            'description': 'Verbindungseinstellungen für Microsoft 365'
+        }),
+        ('Speicherung', {
+            'fields': ('document_storage_path',),
+        }),
+    )
+    
+    def has_add_permission(self, request):
+        return not SystemSettings.objects.exists()
+    
+    def has_delete_permission(self, request, obj=None):
+        return False
+    
+    def save_model(self, request, obj, form, change):
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(ImportedLeaveRequest)
+class ImportedLeaveRequestAdmin(admin.ModelAdmin):
+    list_display = ['sage_request_id', 'employee', 'leave_type', 'start_date', 'end_date', 'days_count', 'imported_at']
+    list_filter = ['leave_type', 'start_date', 'imported_at']
+    search_fields = ['sage_request_id', 'employee__first_name', 'employee__last_name']
+    raw_id_fields = ['employee', 'document']
+    readonly_fields = ['sage_request_id', 'raw_data', 'imported_at']
+    date_hierarchy = 'start_date'
+
+
+@admin.register(ImportedTimesheet)
+class ImportedTimesheetAdmin(admin.ModelAdmin):
+    list_display = ['employee', 'year', 'month', 'total_hours', 'overtime_hours', 'imported_at']
+    list_filter = ['year', 'month', 'imported_at']
+    search_fields = ['employee__first_name', 'employee__last_name']
+    raw_id_fields = ['employee', 'document']
+    readonly_fields = ['raw_data', 'imported_at']
+
+
 admin.site.site_header = 'DMS Administration'
-admin.site.site_title = 'Document Management System'
-admin.site.index_title = 'Administration Dashboard'
+admin.site.site_title = 'Dokumentenmanagementsystem'
+admin.site.index_title = 'Verwaltung'

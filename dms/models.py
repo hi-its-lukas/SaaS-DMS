@@ -16,14 +16,35 @@ class Department(models.Model):
         ordering = ['name']
 
 
-class Employee(models.Model):
-    employee_id = models.CharField(max_length=50, unique=True)
-    first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100)
-    email = models.EmailField(blank=True)
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True)
-    user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='employee_profile')
+class CostCenter(models.Model):
+    code = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+
+    class Meta:
+        ordering = ['code']
+        verbose_name = "Kostenstelle"
+        verbose_name_plural = "Kostenstellen"
+
+
+class Employee(models.Model):
+    employee_id = models.CharField(max_length=50, unique=True, verbose_name="Mitarbeiter-ID")
+    sage_local_id = models.CharField(max_length=100, blank=True, null=True, unique=True, verbose_name="Sage Local ID")
+    sage_cloud_id = models.CharField(max_length=100, blank=True, null=True, unique=True, verbose_name="Sage Cloud ID")
+    first_name = models.CharField(max_length=100, verbose_name="Vorname")
+    last_name = models.CharField(max_length=100, verbose_name="Nachname")
+    email = models.EmailField(blank=True)
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Abteilung")
+    cost_center = models.ForeignKey(CostCenter, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Kostenstelle")
+    entry_date = models.DateField(null=True, blank=True, verbose_name="Eintrittsdatum")
+    exit_date = models.DateField(null=True, blank=True, verbose_name="Austrittsdatum")
+    user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='employee_profile')
+    is_active = models.BooleanField(default=True, verbose_name="Aktiv")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -205,3 +226,107 @@ class SystemLog(models.Model):
 
     class Meta:
         ordering = ['-timestamp']
+        verbose_name = "Systemprotokoll"
+        verbose_name_plural = "Systemprotokolle"
+
+
+class SystemSettings(models.Model):
+    """Singleton model for system-wide configuration - editable via Django Admin"""
+    
+    sage_local_wsdl_url = models.URLField(
+        blank=True, 
+        verbose_name="Sage Local WSDL URL",
+        help_text="z.B. http://192.168.x.x:33033/?wsdl"
+    )
+    sage_local_api_user = models.CharField(max_length=100, blank=True, verbose_name="Sage Local API-Benutzer")
+    encrypted_sage_local_api_key = models.BinaryField(blank=True, null=True, verbose_name="Sage Local API-Schlüssel (verschlüsselt)")
+    sage_local_timeout = models.PositiveIntegerField(default=30, verbose_name="Sage Local Timeout (Sekunden)")
+    
+    sage_cloud_api_url = models.URLField(
+        blank=True, 
+        verbose_name="Sage Cloud API URL",
+        help_text="z.B. https://mycompany.sage.hr/api"
+    )
+    encrypted_sage_cloud_api_key = models.BinaryField(blank=True, null=True, verbose_name="Sage Cloud API-Schlüssel (verschlüsselt)")
+    
+    ms_graph_tenant_id = models.CharField(max_length=100, blank=True, verbose_name="MS Graph Tenant ID")
+    ms_graph_client_id = models.CharField(max_length=100, blank=True, verbose_name="MS Graph Client ID")
+    encrypted_ms_graph_secret = models.BinaryField(blank=True, null=True, verbose_name="MS Graph Secret (verschlüsselt)")
+    
+    document_storage_path = models.CharField(
+        max_length=500, 
+        default="/data/personalakten",
+        verbose_name="Dokumentenspeicherpfad",
+        help_text="Basispfad für Personalakten"
+    )
+    
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        pass
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return "Systemeinstellungen"
+
+    class Meta:
+        verbose_name = "Systemeinstellung"
+        verbose_name_plural = "Systemeinstellungen"
+
+
+class ImportedLeaveRequest(models.Model):
+    """Tracks imported leave requests from Sage Cloud to prevent duplicates"""
+    sage_request_id = models.CharField(max_length=100, unique=True, verbose_name="Sage Anfrage-ID")
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_requests')
+    document = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True)
+    
+    leave_type = models.CharField(max_length=100, verbose_name="Urlaubsart")
+    start_date = models.DateField(verbose_name="Startdatum")
+    end_date = models.DateField(verbose_name="Enddatum")
+    days_count = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="Anzahl Tage")
+    approval_date = models.DateField(null=True, blank=True, verbose_name="Genehmigungsdatum")
+    approved_by = models.CharField(max_length=200, blank=True, verbose_name="Genehmigt von")
+    
+    raw_data = models.JSONField(default=dict, verbose_name="Rohdaten")
+    imported_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.employee} - {self.leave_type} ({self.start_date} - {self.end_date})"
+
+    class Meta:
+        ordering = ['-start_date']
+        verbose_name = "Importierter Urlaubsantrag"
+        verbose_name_plural = "Importierte Urlaubsanträge"
+
+
+class ImportedTimesheet(models.Model):
+    """Tracks imported monthly timesheets from Sage Cloud"""
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='timesheets')
+    document = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True)
+    
+    year = models.PositiveIntegerField(verbose_name="Jahr")
+    month = models.PositiveIntegerField(verbose_name="Monat")
+    
+    total_hours = models.DecimalField(max_digits=6, decimal_places=2, default=0, verbose_name="Gesamtstunden")
+    overtime_hours = models.DecimalField(max_digits=6, decimal_places=2, default=0, verbose_name="Überstunden")
+    
+    raw_data = models.JSONField(default=dict, verbose_name="Rohdaten")
+    imported_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.employee} - {self.month:02d}/{self.year}"
+
+    class Meta:
+        ordering = ['-year', '-month']
+        unique_together = ['employee', 'year', 'month']
+        verbose_name = "Importierte Zeiterfassung"
+        verbose_name_plural = "Importierte Zeiterfassungen"

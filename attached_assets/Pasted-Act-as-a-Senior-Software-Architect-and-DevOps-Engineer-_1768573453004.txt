@@ -1,0 +1,73 @@
+Act as a Senior Software Architect and DevOps Engineer. I need a production-ready, containerized **DMS (Digital Personal File)** system.
+The system acts as a central hub between **Sage HR Suite (Local Desktop)**, **Sage HR (Cloud)**, and **Microsoft 365**.
+
+It runs on Ubuntu via Docker Compose.
+
+### 1. High-Level Architecture
+* **Core:** Django 5 (Web UI & Logic).
+* **Database:** PostgreSQL 16 (Encrypted storage).
+* **Scheduling:** `django-celery-beat` (Allows configuring sync intervals via the GUI!).
+* **Workers:** Celery + Redis.
+* **Storage:** Samba Container (Network Shares) + Internal Encrypted Volume.
+
+### 2. Configuration & GUI (Crucial Requirement)
+The system must be fully configurable via the Django Admin Interface without changing code. Implement a `SystemSettings` singleton model or use `django-constance`:
+
+**A. Connector Settings:**
+* **Sage Local (WCF):** `WSDL_URL` (e.g., `http://192.168.x.x:33033/?wsdl`), `API_USER`, `API_KEY`.
+* **Sage Cloud (REST):** `CLOUD_API_URL` (e.g., `https://mycompany.sage.hr/api`), `CLOUD_API_KEY`.
+* **MS Graph:** `TENANT_ID`, `CLIENT_ID`, `SECRET`.
+
+**B. Interval Settings (django-celery-beat):**
+* The admin must be able to set Cron-Schedules in the GUI (e.g., "Sync Master Data: Daily at 3 AM", "Fetch Timesheets: Last day of month at 23:00").
+
+### 3. Module A: Master Data Sync (Sage Local WCF)
+* **Goal:** Create the "Skeleton" of the personal files.
+* **Technology:** `zeep` (SOAP Client).
+* **Logic:**
+    1. Connect to local WSDL.
+    2. Fetch all employees.
+    3. **Map & Store:** Link the `SageLocal_ID` and `SageCloud_ID` (if available via mapping) to one `Employee` record in Postgres.
+    4. Update attributes: Department, Cost Center, Entry Date.
+
+### 4. Module B: The "Document Generator" (Sage Cloud REST)
+This module fetches raw data and **generates** PDF documents to be filed.
+* **Technology:** `requests` (API) + `weasyprint` or `pdfkit` (HTML-to-PDF generation).
+
+**Feature 1: Leave Requests (Urlaubsanträge)**
+* **Poll Logic:** Fetch approved time-off requests (`/api/leave-management/requests`).
+* **Idempotency:** Track imported request IDs to avoid duplicates.
+* **Action:**
+    1. Create a clean HTML template "Leave Request" (Employee Name, Dates, Type, Approval Date).
+    2. Render it to PDF.
+    3. Save to: `/Personalakte/{Employee}/Urlaubsantraege/{Year}/request_{id}.pdf`.
+
+**Feature 2: Monthly Timesheets (Arbeitszeittabellen)**
+* **Poll Logic:** Run on the 1st of the month for the *previous* month.
+* **Action:**
+    1. Fetch timesheet data for the full month (`/api/timesheets`).
+    2. Generate a tabular PDF report "Timesheet {Month}_{Year}".
+    3. Save to: `/Personalakte/{Employee}/Zeiterfassung/{Year}/timesheet_{month}.pdf`.
+
+### 5. Module C: The "Physical" Input (Scans & Lohnscheine)
+* **Source:** Samba Share `[SageArchive]` (ReadOnly).
+* **Logic:**
+    * Watch for new PDFs from Sage Payroll.
+    * **DataMatrix Scan:** Use `pylibdmtx` to find the Employee ID on the PDF.
+    * **Auto-File:** Move (conceptually) to the correct employee folder in the UI.
+
+### 6. Module D: Microsoft Graph (Email)
+* Poll Inbox -> Convert Email to PDF -> Create Task -> File in "Inbox/Unsorted".
+
+### 7. Security & Encryption
+* **Data at Rest:** All generated and imported PDFs must be stored encrypted (AES) using `cryptography.fernet`.
+* **Access Control:** Django Groups ("HR Admin" sees all, "Employee" sees own).
+
+### 8. Deliverables
+1.  **`docker-compose.yml`**: Full stack (Django, Postgres, Redis, Celery, Samba).
+2.  **`requirements.txt`**: Add `zeep`, `weasyprint`, `django-celery-beat`.
+3.  **`models.py`**: Complex `Employee` model and `SystemConfiguration`.
+4.  **`tasks/generators.py`**: The code that renders the PDFs from JSON data.
+5.  **`admin.py`**: Configuration forms.
+
+**Note:** Ensure the WCF client handles connection timeouts gracefully (local server might be offline).
