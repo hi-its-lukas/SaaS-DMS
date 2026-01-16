@@ -10,23 +10,23 @@
             <p style="color: #666;">{{ document.original_filename }}</p>
         </div>
         <div>
-            <a href="{% url 'dms:document_download' document.pk %}" class="btn btn-success">Download</a>
-            <a href="{% url 'dms:document_list' %}" class="btn">Back to List</a>
+            <a href="{% url 'dms:document_download' document.pk %}" class="btn btn-success">Herunterladen</a>
+            <a href="{% url 'dms:document_list' %}" class="btn">Zurück zur Liste</a>
         </div>
     </div>
 </div>
 
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
     <div class="card">
-        <h2>Document Info</h2>
+        <h2>Dokumentinformationen</h2>
         <table>
             <tr><th style="width: 140px;">ID</th><td>{{ document.id }}</td></tr>
             <tr><th>Status</th><td><span class="badge badge-{{ document.status|lower }}">{{ document.get_status_display }}</span></td></tr>
-            <tr><th>Source</th><td>{{ document.get_source_display }}</td></tr>
-            <tr><th>Type</th><td>{{ document.document_type.name|default:"Not assigned" }}</td></tr>
-            <tr><th>MIME Type</th><td>{{ document.mime_type }}</td></tr>
-            <tr><th>Size</th><td>
-                {% if document.file_size < 1024 %}{{ document.file_size }} bytes
+            <tr><th>Quelle</th><td>{{ document.get_source_display }}</td></tr>
+            <tr><th>Typ</th><td>{{ document.document_type.name|default:"Nicht zugewiesen" }}</td></tr>
+            <tr><th>MIME-Typ</th><td>{{ document.mime_type }}</td></tr>
+            <tr><th>Größe</th><td>
+                {% if document.file_size < 1024 %}{{ document.file_size }} Bytes
                 {% elif document.file_size < 1048576 %}{{ document.file_size|floatformat:1|divisibleby:1024 }} KB
                 {% else %}{{ document.file_size|floatformat:2|divisibleby:1048576 }} MB{% endif %}
             </td></tr>
@@ -34,14 +34,14 @@
     </div>
     
     <div class="card">
-        <h2>Assignment</h2>
+        <h2>Zuweisung</h2>
         <table>
-            <tr><th style="width: 140px;">Employee</th><td>{{ document.employee.full_name|default:"Not assigned" }}</td></tr>
-            <tr><th>Owner</th><td>{{ document.owner.username|default:"System" }}</td></tr>
-            <tr><th>Created</th><td>{{ document.created_at|date:"M d, Y H:i" }}</td></tr>
-            <tr><th>Updated</th><td>{{ document.updated_at|date:"M d, Y H:i" }}</td></tr>
+            <tr><th style="width: 140px;">Mitarbeiter</th><td>{{ document.employee.full_name|default:"Nicht zugewiesen" }}</td></tr>
+            <tr><th>Besitzer</th><td>{{ document.owner.username|default:"System" }}</td></tr>
+            <tr><th>Erstellt</th><td>{{ document.created_at|date:"d.m.Y H:i" }}</td></tr>
+            <tr><th>Aktualisiert</th><td>{{ document.updated_at|date:"d.m.Y H:i" }}</td></tr>
             {% if document.archived_at %}
-            <tr><th>Archived</th><td>{{ document.archived_at|date:"M d, Y H:i" }}</td></tr>
+            <tr><th>Archiviert</th><td>{{ document.archived_at|date:"d.m.Y H:i" }}</td></tr>
             {% endif %}
         </table>
     </div>
@@ -49,24 +49,24 @@
 
 {% if document.notes %}
 <div class="card">
-    <h2>Notes</h2>
+    <h2>Notizen</h2>
     <p>{{ document.notes }}</p>
 </div>
 {% endif %}
 
 {% if document.metadata %}
 <div class="card">
-    <h2>Metadata</h2>
+    <h2>Metadaten</h2>
     <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">{{ document.metadata|pprint }}</pre>
 </div>
 {% endif %}
 
 {% if document.tasks.exists %}
 <div class="card">
-    <h2>Related Tasks</h2>
+    <h2>Zugehörige Aufgaben</h2>
     <table>
         <thead>
-            <tr><th>Title</th><th>Status</th><th>Priority</th><th>Assigned To</th></tr>
+            <tr><th>Titel</th><th>Status</th><th>Priorität</th><th>Zugewiesen an</th></tr>
         </thead>
         <tbody>
             {% for task in document.tasks.all %}

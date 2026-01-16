@@ -1,32 +1,32 @@
 {% extends 'dms/base.html' %}
 
-{% block title %}Tasks{% endblock %}
+{% block title %}Aufgaben{% endblock %}
 
 {% block content %}
 <div class="card">
-    <h2 style="margin-bottom: 20px;">Tasks</h2>
+    <h2 style="margin-bottom: 20px;">Aufgaben</h2>
     
     <form method="get" style="display: flex; gap: 10px; margin-bottom: 20px;">
         <select name="status" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
-            <option value="">All Status</option>
+            <option value="">Alle Status</option>
             {% for value, label in status_choices %}
             <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
         </select>
-        <button type="submit" class="btn">Filter</button>
+        <button type="submit" class="btn">Filtern</button>
     </form>
     
     {% if tasks %}
     <table>
         <thead>
             <tr>
-                <th>Title</th>
-                <th>Document</th>
+                <th>Titel</th>
+                <th>Dokument</th>
                 <th>Status</th>
-                <th>Priority</th>
-                <th>Assigned To</th>
-                <th>Due Date</th>
-                <th>Actions</th>
+                <th>Priorität</th>
+                <th>Zugewiesen an</th>
+                <th>Fälligkeitsdatum</th>
+                <th>Aktionen</th>
             </tr>
         </thead>
         <tbody>
@@ -50,13 +50,13 @@
                     {% endif %}
                 </td>
                 <td>{{ task.assigned_to.username|default:"-" }}</td>
-                <td>{{ task.due_date|date:"M d, Y"|default:"-" }}</td>
+                <td>{{ task.due_date|date:"d.m.Y"|default:"-" }}</td>
                 <td>
                     {% if task.status != 'COMPLETED' %}
                     <button class="btn btn-success" style="padding: 5px 10px; font-size: 12px;" 
-                            onclick="completeTask('{{ task.pk }}')">Complete</button>
+                            onclick="completeTask('{{ task.pk }}')">Erledigen</button>
                     {% else %}
-                    <span style="color: #27ae60;">Done</span>
+                    <span style="color: #27ae60;">Erledigt</span>
                     {% endif %}
                 </td>
             </tr>
@@ -67,17 +67,17 @@
     {% if tasks.has_other_pages %}
     <div style="margin-top: 20px; text-align: center;">
         {% if tasks.has_previous %}
-        <a href="?page={{ tasks.previous_page_number }}" class="btn">Previous</a>
+        <a href="?page={{ tasks.previous_page_number }}" class="btn">Zurück</a>
         {% endif %}
-        <span style="margin: 0 15px;">Page {{ tasks.number }} of {{ tasks.paginator.num_pages }}</span>
+        <span style="margin: 0 15px;">Seite {{ tasks.number }} von {{ tasks.paginator.num_pages }}</span>
         {% if tasks.has_next %}
-        <a href="?page={{ tasks.next_page_number }}" class="btn">Next</a>
+        <a href="?page={{ tasks.next_page_number }}" class="btn">Weiter</a>
         {% endif %}
     </div>
     {% endif %}
     
     {% else %}
-    <p style="color: #666; text-align: center; padding: 40px;">No tasks found.</p>
+    <p style="color: #666; text-align: center; padding: 40px;">Keine Aufgaben gefunden.</p>
     {% endif %}
 </div>
 
@@ -95,7 +95,7 @@ async function completeTask(taskId) {
             location.reload();
         }
     } catch (error) {
-        alert('Failed to complete task');
+        alert('Aufgabe konnte nicht abgeschlossen werden');
     }
 }
 

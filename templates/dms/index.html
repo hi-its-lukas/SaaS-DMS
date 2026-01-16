@@ -8,33 +8,33 @@
 <div class="stats">
     <div class="stat-card">
         <h3>{{ stats.total_documents }}</h3>
-        <p>Total Documents</p>
+        <p>Dokumente gesamt</p>
     </div>
     <div class="stat-card">
         <h3>{{ stats.unassigned }}</h3>
-        <p>Unassigned</p>
+        <p>Nicht zugewiesen</p>
     </div>
     <div class="stat-card">
         <h3>{{ stats.review_needed }}</h3>
-        <p>Review Needed</p>
+        <p>Prüfung erforderlich</p>
     </div>
     <div class="stat-card">
         <h3>{{ stats.open_tasks }}</h3>
-        <p>Open Tasks</p>
+        <p>Offene Aufgaben</p>
     </div>
 </div>
 
 <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
     <div class="card">
-        <h2>Recent Documents</h2>
+        <h2>Aktuelle Dokumente</h2>
         {% if recent_documents %}
         <table>
             <thead>
                 <tr>
-                    <th>Title</th>
+                    <th>Titel</th>
                     <th>Status</th>
-                    <th>Source</th>
-                    <th>Date</th>
+                    <th>Quelle</th>
+                    <th>Datum</th>
                 </tr>
             </thead>
             <tbody>
@@ -45,39 +45,39 @@
                         <span class="badge badge-{{ doc.status|lower }}">{{ doc.get_status_display }}</span>
                     </td>
                     <td>{{ doc.get_source_display }}</td>
-                    <td>{{ doc.created_at|date:"M d, Y" }}</td>
+                    <td>{{ doc.created_at|date:"d.m.Y" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         {% else %}
-        <p style="color: #666;">No documents yet. <a href="{% url 'dms:upload_page' %}">Upload your first document</a></p>
+        <p style="color: #666;">Noch keine Dokumente. <a href="{% url 'dms:upload_page' %}">Laden Sie Ihr erstes Dokument hoch</a></p>
         {% endif %}
     </div>
     
     <div class="card">
-        <h2>Open Tasks</h2>
+        <h2>Offene Aufgaben</h2>
         {% if open_tasks %}
         <ul style="list-style: none;">
             {% for task in open_tasks %}
             <li style="padding: 10px 0; border-bottom: 1px solid #eee;">
                 <strong>{{ task.title }}</strong>
-                <br><small style="color: #666;">Priority: {{ task.get_priority_display }}</small>
+                <br><small style="color: #666;">Priorität: {{ task.get_priority_display }}</small>
             </li>
             {% endfor %}
         </ul>
         {% else %}
-        <p style="color: #666;">No open tasks.</p>
+        <p style="color: #666;">Keine offenen Aufgaben.</p>
         {% endif %}
     </div>
 </div>
 
 <div class="card" style="margin-top: 20px;">
-    <h2>Quick Actions</h2>
+    <h2>Schnellaktionen</h2>
     <div style="display: flex; gap: 10px; margin-top: 10px;">
-        <a href="{% url 'dms:upload_page' %}" class="btn btn-success">Upload Document</a>
-        <a href="{% url 'dms:document_list' %}?status=UNASSIGNED" class="btn">View Unassigned</a>
-        <a href="{% url 'dms:document_list' %}?status=REVIEW_NEEDED" class="btn btn-danger">Review Needed</a>
+        <a href="{% url 'dms:upload_page' %}" class="btn btn-success">Dokument hochladen</a>
+        <a href="{% url 'dms:document_list' %}?status=UNASSIGNED" class="btn">Nicht zugewiesene anzeigen</a>
+        <a href="{% url 'dms:document_list' %}?status=REVIEW_NEEDED" class="btn btn-danger">Prüfung erforderlich</a>
     </div>
 </div>
 {% endblock %}

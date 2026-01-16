@@ -1,44 +1,44 @@
 {% extends 'dms/base.html' %}
 
-{% block title %}Documents{% endblock %}
+{% block title %}Dokumente{% endblock %}
 
 {% block content %}
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h2>Documents</h2>
-        <a href="{% url 'dms:upload_page' %}" class="btn btn-success">Upload New</a>
+        <h2>Dokumente</h2>
+        <a href="{% url 'dms:upload_page' %}" class="btn btn-success">Neu hochladen</a>
     </div>
     
     <form method="get" style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
-        <input type="text" name="search" placeholder="Search..." value="{{ request.GET.search }}" 
+        <input type="text" name="search" placeholder="Suchen..." value="{{ request.GET.search }}" 
                style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; flex: 1; min-width: 200px;">
         <select name="status" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
-            <option value="">All Status</option>
+            <option value="">Alle Status</option>
             {% for value, label in status_choices %}
             <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
         </select>
         <select name="source" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
-            <option value="">All Sources</option>
+            <option value="">Alle Quellen</option>
             {% for value, label in source_choices %}
             <option value="{{ value }}" {% if request.GET.source == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
         </select>
-        <button type="submit" class="btn">Filter</button>
+        <button type="submit" class="btn">Filtern</button>
     </form>
     
     {% if documents %}
     <table>
         <thead>
             <tr>
-                <th>Title</th>
-                <th>Type</th>
+                <th>Titel</th>
+                <th>Typ</th>
                 <th>Status</th>
-                <th>Source</th>
-                <th>Employee</th>
-                <th>Size</th>
-                <th>Date</th>
-                <th>Actions</th>
+                <th>Quelle</th>
+                <th>Mitarbeiter</th>
+                <th>Größe</th>
+                <th>Datum</th>
+                <th>Aktionen</th>
             </tr>
         </thead>
         <tbody>
@@ -59,10 +59,10 @@
                     {% elif doc.file_size < 1048576 %}{{ doc.file_size|floatformat:0|divisibleby:1024 }} KB
                     {% else %}{{ doc.file_size|floatformat:1|divisibleby:1048576 }} MB{% endif %}
                 </td>
-                <td>{{ doc.created_at|date:"M d, Y" }}</td>
+                <td>{{ doc.created_at|date:"d.m.Y" }}</td>
                 <td>
-                    <a href="{% url 'dms:document_detail' doc.pk %}" class="btn" style="padding: 5px 10px; font-size: 12px;">View</a>
-                    <a href="{% url 'dms:document_download' doc.pk %}" class="btn btn-success" style="padding: 5px 10px; font-size: 12px;">Download</a>
+                    <a href="{% url 'dms:document_detail' doc.pk %}" class="btn" style="padding: 5px 10px; font-size: 12px;">Ansehen</a>
+                    <a href="{% url 'dms:document_download' doc.pk %}" class="btn btn-success" style="padding: 5px 10px; font-size: 12px;">Herunterladen</a>
                 </td>
             </tr>
             {% endfor %}
@@ -72,17 +72,17 @@
     {% if documents.has_other_pages %}
     <div style="margin-top: 20px; text-align: center;">
         {% if documents.has_previous %}
-        <a href="?page={{ documents.previous_page_number }}" class="btn">Previous</a>
+        <a href="?page={{ documents.previous_page_number }}" class="btn">Zurück</a>
         {% endif %}
-        <span style="margin: 0 15px;">Page {{ documents.number }} of {{ documents.paginator.num_pages }}</span>
+        <span style="margin: 0 15px;">Seite {{ documents.number }} von {{ documents.paginator.num_pages }}</span>
         {% if documents.has_next %}
-        <a href="?page={{ documents.next_page_number }}" class="btn">Next</a>
+        <a href="?page={{ documents.next_page_number }}" class="btn">Weiter</a>
         {% endif %}
     </div>
     {% endif %}
     
     {% else %}
-    <p style="color: #666; text-align: center; padding: 40px;">No documents found.</p>
+    <p style="color: #666; text-align: center; padding: 40px;">Keine Dokumente gefunden.</p>
     {% endif %}
 </div>
 {% endblock %}

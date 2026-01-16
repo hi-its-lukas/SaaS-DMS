@@ -1,6 +1,6 @@
 {% extends 'dms/base.html' %}
 
-{% block title %}Upload Document{% endblock %}
+{% block title %}Dokument hochladen{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -76,13 +76,13 @@
 
 {% block content %}
 <div class="card">
-    <h2>Upload Documents</h2>
-    <p style="color: #666; margin-bottom: 20px;">Drag and drop files or click to select. Supported: PDF, Word, Excel, Images</p>
+    <h2>Dokumente hochladen</h2>
+    <p style="color: #666; margin-bottom: 20px;">Dateien hierher ziehen oder klicken zum Auswählen. Unterstützt: PDF, Word, Excel, Bilder</p>
     
     <div class="upload-zone" id="upload-zone">
         <div class="upload-icon">📄</div>
-        <h3>Drop files here</h3>
-        <p>or click to browse</p>
+        <h3>Dateien hier ablegen</h3>
+        <p>oder klicken zum Durchsuchen</p>
         <input type="file" id="file-input" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.tiff,.txt">
     </div>
     
@@ -128,7 +128,7 @@ async function uploadFile(file) {
     item.className = 'upload-item';
     item.innerHTML = `
         <span class="name">${file.name}</span>
-        <span class="status">Uploading...</span>
+        <span class="status">Wird hochgeladen...</span>
         <div class="progress-bar"><div class="fill"></div></div>
     `;
     uploadList.appendChild(item);
@@ -150,15 +150,15 @@ async function uploadFile(file) {
         
         if (result.success) {
             item.className = 'upload-item success';
-            item.querySelector('.status').textContent = 'Uploaded!';
+            item.querySelector('.status').textContent = 'Hochgeladen!';
             item.querySelector('.fill').style.width = '100%';
         } else {
             item.className = 'upload-item error';
-            item.querySelector('.status').textContent = result.error || 'Failed';
+            item.querySelector('.status').textContent = result.error || 'Fehlgeschlagen';
         }
     } catch (error) {
         item.className = 'upload-item error';
-        item.querySelector('.status').textContent = 'Network error';
+        item.querySelector('.status').textContent = 'Netzwerkfehler';
     }
 }
 

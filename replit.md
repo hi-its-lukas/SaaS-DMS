@@ -1,97 +1,103 @@
-# Document Management System (DMS)
+# Dokumentenmanagementsystem (DMS)
 
-A production-ready Django-based Document Management System designed for HR and Corporate workflows.
+Ein produktionsreifes Django-basiertes Dokumentenmanagementsystem für HR- und Unternehmensabläufe.
 
-## Overview
+## Übersicht
 
-This DMS provides encrypted document storage, multi-channel input processing, and Microsoft 365 email integration. All documents are encrypted using Fernet symmetric encryption before storage.
+Dieses DMS bietet verschlüsselte Dokumentenspeicherung, Multi-Kanal-Eingabeverarbeitung und Microsoft 365 E-Mail-Integration. Alle Dokumente werden mit Fernet-Verschlüsselung vor der Speicherung verschlüsselt.
 
-## Project Structure
+## Projektstruktur
 
 ```
-dms_project/           # Django project settings
-  ├── settings.py      # Main configuration
-  ├── celery.py        # Celery async task configuration
-  └── urls.py          # URL routing
+dms_project/           # Django-Projekteinstellungen
+  ├── settings.py      # Hauptkonfiguration
+  ├── celery.py        # Celery-Async-Task-Konfiguration
+  └── urls.py          # URL-Routing
 
-dms/                   # Main application
-  ├── models.py        # Database models (Document, Employee, Task, etc.)
-  ├── views.py         # Web views for upload, listing, download
-  ├── tasks.py         # Celery background tasks
-  ├── encryption.py    # Fernet encryption utilities
-  ├── admin.py         # Django Admin configuration
-  └── urls.py          # App URL patterns
+dms/                   # Hauptanwendung
+  ├── models.py        # Datenbankmodelle (Dokument, Mitarbeiter, Aufgabe, etc.)
+  ├── views.py         # Web-Views für Upload, Auflistung, Download
+  ├── tasks.py         # Celery-Hintergrundaufgaben
+  ├── encryption.py    # Fernet-Verschlüsselungstools
+  ├── admin.py         # Django-Admin-Konfiguration
+  └── urls.py          # App-URL-Muster
 
-templates/dms/         # HTML templates
-data/                  # Data directories
-  ├── sage_archive/    # Read-only Sage HR archive
-  ├── manual_input/    # Manual scan input folder
-  └── email_archive/   # Email storage
+templates/dms/         # HTML-Vorlagen
+data/                  # Datenverzeichnisse
+  ├── sage_archive/    # Schreibgeschütztes Sage HR-Archiv
+  ├── manual_input/    # Manueller Scan-Eingabeordner
+  └── email_archive/   # E-Mail-Speicher
 ```
 
-## Key Features
+## Hauptfunktionen
 
-### Input Channels
+### Eingabekanäle
 
-1. **Sage HR Archive (Channel A)**: Idempotent import from read-only folder with SHA-256 hash checking
-2. **Manual Input (Channel B)**: Consume-and-move pattern for scanner/user uploads
-3. **Web Upload (Channel C)**: Drag-and-drop interface with AJAX upload
+1. **Sage HR-Archiv (Kanal A)**: Idempotenter Import mit SHA-256-Hash-Prüfung
+2. **Manuelle Eingabe (Kanal B)**: Verbrauchen-und-Verschieben-Muster für Scanner/Benutzer-Uploads
+3. **Web-Upload (Kanal C)**: Drag-and-Drop-Oberfläche mit AJAX-Upload
 
-### Security
+### Sicherheit
 
-- All files encrypted with Fernet before database storage
-- SHA-256 hash tracking to prevent duplicate imports
-- Role-based permissions via Django Groups
+- Alle Dateien werden mit Fernet vor der Datenbankspeicherung verschlüsselt
+- SHA-256-Hash-Tracking zur Vermeidung doppelter Importe
+- Rollenbasierte Berechtigungen über Django-Gruppen
+- **Passwortschutz für die gesamte Anwendung erforderlich**
 
-### Document Workflow
+### Dokument-Workflow
 
-- Status: UNASSIGNED, ASSIGNED, ARCHIVED, REVIEW_NEEDED
-- DataMatrix barcode scanning for automatic employee assignment
-- Task creation for review items
+- Status: NICHT ZUGEWIESEN, ZUGEWIESEN, ARCHIVIERT, PRÜFUNG ERFORDERLICH
+- DataMatrix-Barcode-Scanning für automatische Mitarbeiterzuweisung
+- Aufgabenerstellung für Prüfungspunkte
 
-### Email Integration
+### E-Mail-Integration
 
-- Microsoft Graph API via O365 library
-- Automatic email-to-PDF conversion
-- Attachment extraction and storage
+- Microsoft Graph API über O365-Bibliothek
+- Automatische E-Mail-zu-PDF-Konvertierung
+- Anhang-Extraktion und -Speicherung
 
-## Environment Variables
+## Docker-Installation
 
-- `DATABASE_URL`: PostgreSQL connection string
-- `ENCRYPTION_KEY`: Fernet encryption key (generate with `Fernet.generate_key()`)
-- `REDIS_URL`: Redis connection for Celery (optional in Replit)
-- `SAGE_ARCHIVE_PATH`: Path to Sage HR archive folder
-- `MANUAL_INPUT_PATH`: Path to manual input folder
-- `EMAIL_ARCHIVE_PATH`: Path to email archive folder
+### Schnellstart
 
-## Admin Access
+1. Setup-Skript ausführen (generiert automatisch alle Schlüssel):
+```bash
+python setup.py
+```
 
+2. Docker-Container starten:
+```bash
+docker-compose up -d
+```
+
+3. Im Browser öffnen: http://localhost
+
+4. Mit den angezeigten Zugangsdaten anmelden
+
+### Samba-Freigaben
+
+Nach dem Start sind folgende Netzwerkfreigaben verfügbar:
+- `\\server\Sage_Archiv` (Nur Lesen) - Sage HR-Archiv
+- `\\server\Manueller_Scan` (Lesen/Schreiben) - Scanner-Eingabe
+
+## Lokale Entwicklung (Replit)
+
+### Admin-Zugang
 - URL: `/admin/`
-- Username: `admin`
-- Password: `admin123`
+- Benutzername: `admin`
+- Passwort: `admin123`
 
-## Running Celery Tasks
+### Celery-Aufgaben ausführen
 
-For background processing, run Celery worker and beat:
-
+Für Hintergrundverarbeitung:
 ```bash
 celery -A dms_project worker -l INFO
 celery -A dms_project beat -l INFO
 ```
 
-## Docker Deployment
+## Letzte Änderungen
 
-See `docker-compose.yml` for full containerized deployment including:
-- Django web server
-- PostgreSQL database
-- Redis message broker
-- Celery worker and beat
-- Samba file shares
-- Nginx reverse proxy
-
-## Recent Changes
-
-- Initial implementation with all core features
-- Django 5.2 with Celery integration
-- Full encryption implementation
-- Admin interface configured
+- Vollständige deutsche Benutzeroberfläche
+- Passwortschutz für alle Seiten aktiviert
+- Automatische Schlüsselgenerierung beim Setup
+- Docker-Deployment-Konfiguration

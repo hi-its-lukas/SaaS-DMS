@@ -13,6 +13,7 @@ from .encryption import encrypt_data, decrypt_data, calculate_sha256
 import magic
 
 
+@login_required
 def index(request):
     recent_documents = Document.objects.all()[:10]
     open_tasks = Task.objects.filter(status='OPEN')[:5]

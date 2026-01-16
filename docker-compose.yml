@@ -3,7 +3,6 @@ version: '3.8'
 services:
   web:
     build: .
-    command: gunicorn dms_project.wsgi:application --bind 0.0.0.0:8000 --workers 4
     volumes:
       - static_volume:/app/staticfiles
       - ./data/sage_archive:/data/sage_archive:ro
@@ -16,20 +15,21 @@ services:
     depends_on:
       - db
       - redis
+    restart: unless-stopped
 
   db:
-    image: postgres:15
+    image: postgres:15-alpine
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=dms
-      - POSTGRES_USER=dms_user
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    env_file:
+      - .env
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     volumes:
       - redis_data:/data
+    restart: unless-stopped
 
   celery_worker:
     build: .
@@ -43,6 +43,7 @@ services:
     depends_on:
       - db
       - redis
+    restart: unless-stopped
 
   celery_beat:
     build: .
@@ -52,13 +53,14 @@ services:
     depends_on:
       - db
       - redis
+    restart: unless-stopped
 
   samba:
     image: dperson/samba
     environment:
       - USER1=dmsuser;${SAMBA_PASSWORD}
-      - SHARE1=Sage_Archive;/shares/sage;no;no;no;dmsuser
-      - SHARE2=Manual_Scan;/shares/manual;yes;no;no;dmsuser
+      - SHARE1=Sage_Archiv;/shares/sage;no;no;no;dmsuser
+      - SHARE2=Manueller_Scan;/shares/manual;yes;no;no;dmsuser
     volumes:
       - ./data/sage_archive:/shares/sage:ro
       - ./data/manual_input:/shares/manual
@@ -75,6 +77,7 @@ services:
       - "80:80"
     depends_on:
       - web
+    restart: unless-stopped
 
 volumes:
   postgres_data:
