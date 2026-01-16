@@ -1,0 +1,570 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | DMS{% endblock %}
+
+{% block branding %}
+<h1 id="site-name">
+    <a href="{% url 'admin:index' %}">
+        <span class="dms-logo">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+            </svg>
+        </span>
+        DMS Administration
+    </a>
+</h1>
+{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<style>
+:root {
+    --primary: #0066b3;
+    --primary-dark: #004d86;
+    --primary-light: #e6f0f7;
+    --accent: #00a3a3;
+    --success: #2e7d32;
+    --warning: #ed6c02;
+    --error: #d32f2f;
+    --sidebar-bg: #1e2a38;
+    --text-primary: #1a1a1a;
+    --text-secondary: #5f6368;
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --border: #dadce0;
+    --radius: 8px;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    background: var(--bg-secondary) !important;
+}
+
+#header {
+    background: var(--sidebar-bg) !important;
+    color: white !important;
+    padding: 16px 24px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+#site-name a {
+    color: white !important;
+    font-weight: 700 !important;
+    font-size: 18px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    text-decoration: none !important;
+}
+
+.dms-logo {
+    width: 36px;
+    height: 36px;
+    background: var(--primary);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+#user-tools {
+    font-size: 13px !important;
+}
+
+#user-tools a {
+    color: rgba(255,255,255,0.8) !important;
+    border-radius: 4px !important;
+    padding: 6px 12px !important;
+    transition: all 0.15s ease !important;
+}
+
+#user-tools a:hover {
+    color: white !important;
+    background: rgba(255,255,255,0.1) !important;
+}
+
+#branding {
+    display: flex;
+    align-items: center;
+    float: left;
+}
+
+#container {
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+#content {
+    background: var(--bg-primary);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border: 1px solid var(--border);
+}
+
+#content h1 {
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    color: var(--text-primary) !important;
+    margin-bottom: 20px !important;
+}
+
+.breadcrumbs {
+    background: var(--bg-primary) !important;
+    padding: 12px 16px !important;
+    border-radius: var(--radius) !important;
+    margin-bottom: 20px !important;
+    border: 1px solid var(--border) !important;
+    font-size: 13px !important;
+}
+
+.breadcrumbs a {
+    color: var(--primary) !important;
+}
+
+.module {
+    background: var(--bg-primary) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    margin-bottom: 24px !important;
+    overflow: hidden;
+}
+
+.module h2, .module caption {
+    background: var(--sidebar-bg) !important;
+    color: white !important;
+    padding: 14px 20px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+}
+
+.module table {
+    border-collapse: collapse !important;
+    width: 100%;
+}
+
+.module th {
+    background: var(--bg-secondary) !important;
+    color: var(--text-secondary) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    padding: 12px 16px !important;
+    border-bottom: 1px solid var(--border) !important;
+}
+
+.module td {
+    padding: 12px 16px !important;
+    border-bottom: 1px solid var(--bg-secondary) !important;
+    font-size: 14px !important;
+}
+
+.module tr:hover td {
+    background: var(--primary-light) !important;
+}
+
+.module tr:last-child td {
+    border-bottom: none !important;
+}
+
+table thead th {
+    background: var(--bg-secondary) !important;
+    color: var(--text-secondary) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    padding: 12px 16px !important;
+    border-bottom: 1px solid var(--border) !important;
+}
+
+table tbody td {
+    padding: 12px 16px !important;
+    border-bottom: 1px solid var(--bg-secondary) !important;
+}
+
+table tbody tr:hover td {
+    background: var(--primary-light) !important;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="url"],
+textarea,
+select {
+    font-family: 'Inter', sans-serif !important;
+    padding: 10px 14px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    font-size: 14px !important;
+    transition: all 0.15s ease !important;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus,
+input[type="number"]:focus,
+input[type="url"]:focus,
+textarea:focus,
+select:focus {
+    outline: none !important;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px var(--primary-light) !important;
+}
+
+.submit-row {
+    background: var(--bg-secondary) !important;
+    padding: 16px 20px !important;
+    border-radius: 0 0 12px 12px !important;
+    margin: 24px -24px -24px !important;
+    border-top: 1px solid var(--border) !important;
+}
+
+.submit-row input[type="submit"],
+input[type="submit"],
+.button,
+a.button {
+    font-family: 'Inter', sans-serif !important;
+    background: var(--primary) !important;
+    color: white !important;
+    border: none !important;
+    padding: 10px 20px !important;
+    border-radius: 6px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+    text-decoration: none !important;
+}
+
+.submit-row input[type="submit"]:hover,
+input[type="submit"]:hover,
+.button:hover,
+a.button:hover {
+    background: var(--primary-dark) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,102,179,0.3);
+}
+
+.deletelink {
+    background: var(--error) !important;
+    color: white !important;
+    padding: 8px 16px !important;
+    border-radius: 6px !important;
+}
+
+.addlink, .changelink, .viewlink {
+    color: var(--primary) !important;
+}
+
+a {
+    color: var(--primary);
+}
+
+a:hover {
+    color: var(--primary-dark);
+}
+
+fieldset {
+    background: var(--bg-primary) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    margin-bottom: 24px !important;
+    padding: 0 !important;
+    overflow: hidden;
+}
+
+fieldset h2 {
+    background: linear-gradient(135deg, var(--sidebar-bg), #2c3e50) !important;
+    color: white !important;
+    padding: 16px 20px !important;
+    margin: 0 !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+fieldset .description {
+    background: var(--primary-light) !important;
+    padding: 12px 20px !important;
+    color: var(--primary-dark) !important;
+    font-size: 13px !important;
+    border-bottom: 1px solid var(--border) !important;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+fieldset .description::before {
+    content: 'info';
+    font-family: 'Material Icons';
+    font-size: 18px;
+}
+
+.form-row {
+    padding: 16px 20px !important;
+    border-bottom: 1px solid var(--bg-secondary) !important;
+}
+
+.form-row:last-child {
+    border-bottom: none !important;
+}
+
+.form-row label {
+    font-weight: 600 !important;
+    color: var(--text-primary) !important;
+    font-size: 13px !important;
+    display: block !important;
+    margin-bottom: 6px !important;
+}
+
+.help {
+    color: var(--text-secondary) !important;
+    font-size: 12px !important;
+    margin-top: 6px !important;
+}
+
+.errorlist {
+    background: #ffebee !important;
+    color: var(--error) !important;
+    padding: 10px 16px !important;
+    border-radius: 6px !important;
+    margin: 8px 0 !important;
+    font-size: 13px !important;
+    border: 1px solid #ffcdd2 !important;
+}
+
+.errornote {
+    background: #ffebee !important;
+    color: var(--error) !important;
+    padding: 14px 20px !important;
+    border-radius: 8px !important;
+    margin-bottom: 20px !important;
+    font-size: 14px !important;
+    border: 1px solid #ffcdd2 !important;
+}
+
+.successnote, .success {
+    background: #e8f5e9 !important;
+    color: var(--success) !important;
+    padding: 14px 20px !important;
+    border-radius: 8px !important;
+    font-size: 14px !important;
+    border: 1px solid #c8e6c9 !important;
+}
+
+ul.messagelist {
+    padding: 0 !important;
+    margin: 0 0 20px !important;
+}
+
+ul.messagelist li {
+    padding: 14px 20px !important;
+    border-radius: 8px !important;
+    margin-bottom: 10px !important;
+    font-size: 14px !important;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+ul.messagelist li.success {
+    background: #e8f5e9 !important;
+    color: var(--success) !important;
+    border: 1px solid #c8e6c9 !important;
+}
+
+ul.messagelist li.warning {
+    background: #fff8e1 !important;
+    color: var(--warning) !important;
+    border: 1px solid #ffe082 !important;
+}
+
+ul.messagelist li.error {
+    background: #ffebee !important;
+    color: var(--error) !important;
+    border: 1px solid #ffcdd2 !important;
+}
+
+ul.messagelist li::before {
+    font-family: 'Material Icons';
+    font-size: 20px;
+}
+
+ul.messagelist li.success::before {
+    content: 'check_circle';
+}
+
+ul.messagelist li.error::before {
+    content: 'error';
+}
+
+ul.messagelist li.warning::before {
+    content: 'warning';
+}
+
+.paginator {
+    padding: 16px !important;
+    background: var(--bg-secondary) !important;
+    border-radius: 8px !important;
+    margin-top: 20px !important;
+}
+
+.paginator a {
+    padding: 8px 14px !important;
+    border-radius: 6px !important;
+    background: var(--bg-primary) !important;
+    border: 1px solid var(--border) !important;
+    margin: 0 4px !important;
+}
+
+.paginator a:hover {
+    background: var(--primary-light) !important;
+    border-color: var(--primary) !important;
+}
+
+#changelist-filter {
+    background: var(--bg-primary) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    padding: 0 !important;
+    overflow: hidden;
+}
+
+#changelist-filter h2 {
+    background: var(--sidebar-bg) !important;
+    color: white !important;
+    padding: 14px 16px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
+
+#changelist-filter h3 {
+    padding: 12px 16px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    color: var(--text-secondary) !important;
+    background: var(--bg-secondary) !important;
+    margin: 0 !important;
+    border-bottom: 1px solid var(--border) !important;
+}
+
+#changelist-filter ul {
+    margin: 0 !important;
+    padding: 8px 0 !important;
+}
+
+#changelist-filter li {
+    list-style: none !important;
+}
+
+#changelist-filter li a {
+    display: block !important;
+    padding: 8px 16px !important;
+    color: var(--text-primary) !important;
+    text-decoration: none !important;
+    font-size: 13px !important;
+}
+
+#changelist-filter li a:hover {
+    background: var(--primary-light) !important;
+}
+
+#changelist-filter li.selected a {
+    background: var(--primary) !important;
+    color: white !important;
+    font-weight: 600 !important;
+}
+
+.object-tools {
+    margin: 0 0 20px !important;
+}
+
+.object-tools a {
+    background: var(--primary) !important;
+    color: white !important;
+    padding: 10px 16px !important;
+    border-radius: 6px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+}
+
+.object-tools a:hover {
+    background: var(--primary-dark) !important;
+}
+
+#changelist .actions {
+    background: var(--bg-secondary) !important;
+    padding: 12px 16px !important;
+    border-radius: 8px !important;
+    margin-bottom: 16px !important;
+    border: 1px solid var(--border) !important;
+}
+
+#changelist .actions select {
+    min-width: 200px !important;
+}
+
+.selector {
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    overflow: hidden;
+}
+
+.selector .selector-available h2,
+.selector .selector-chosen h2 {
+    background: var(--sidebar-bg) !important;
+    color: white !important;
+    padding: 12px 16px !important;
+    font-size: 12px !important;
+}
+
+.selector select {
+    border: none !important;
+    border-radius: 0 !important;
+}
+
+.inline-group .tabular fieldset.module {
+    border: 1px solid var(--border) !important;
+}
+
+.inline-group .tabular fieldset.module h2 {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+}
+
+#nav-sidebar {
+    background: var(--bg-primary) !important;
+    border-right: 1px solid var(--border) !important;
+}
+
+.app-dms.module caption {
+    background: linear-gradient(135deg, var(--primary), var(--accent)) !important;
+}
+
+#footer {
+    padding: 16px 24px !important;
+    background: var(--bg-primary) !important;
+    border-top: 1px solid var(--border) !important;
+    color: var(--text-secondary) !important;
+    font-size: 12px !important;
+}
+</style>
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

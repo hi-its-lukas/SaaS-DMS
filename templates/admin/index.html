@@ -1,0 +1,135 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block content %}
+<div id="content-main">
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 32px;">
+        <div style="background: linear-gradient(135deg, #0066b3, #00a3a3); border-radius: 12px; padding: 24px; color: white;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div style="width: 56px; height: 56px; background: rgba(255,255,255,0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                    <span class="material-icons" style="font-size: 28px;">folder_special</span>
+                </div>
+                <div>
+                    <div style="font-size: 13px; opacity: 0.9;">Willkommen</div>
+                    <div style="font-size: 20px; font-weight: 700;">DMS Administration</div>
+                </div>
+            </div>
+            <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.2);">
+                <a href="{% url 'dms:index' %}" style="color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;">
+                    <span class="material-icons" style="font-size: 16px;">arrow_back</span>
+                    Zurück zur Anwendung
+                </a>
+            </div>
+        </div>
+        
+        <div style="background: white; border: 1px solid #dadce0; border-radius: 12px; padding: 24px;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                <span class="material-icons" style="color: #0066b3;">sync</span>
+                <span style="font-weight: 600;">Schnellzugriff</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <a href="{% url 'dms:sage_sync_dashboard' %}" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f8f9fa; border-radius: 8px; color: #1a1a1a; text-decoration: none; font-size: 13px;">
+                    <span class="material-icons" style="font-size: 18px; color: #5f6368;">sync</span>
+                    Sage Cloud Synchronisation
+                </a>
+                <a href="{% url 'admin:dms_systemsettings_changelist' %}" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f8f9fa; border-radius: 8px; color: #1a1a1a; text-decoration: none; font-size: 13px;">
+                    <span class="material-icons" style="font-size: 18px; color: #5f6368;">settings</span>
+                    Systemeinstellungen
+                </a>
+                <a href="{% url 'admin:dms_systemlog_changelist' %}" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f8f9fa; border-radius: 8px; color: #1a1a1a; text-decoration: none; font-size: 13px;">
+                    <span class="material-icons" style="font-size: 18px; color: #5f6368;">history</span>
+                    Systemprotokoll
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {% if app_list %}
+        {% for app in app_list %}
+            <div class="module" style="margin-bottom: 24px;">
+                <table>
+                    <caption style="display: flex; align-items: center; gap: 12px;">
+                        <span class="material-icons" style="font-size: 20px;">
+                            {% if app.app_label == 'dms' %}folder_shared
+                            {% elif app.app_label == 'auth' %}admin_panel_settings
+                            {% elif app.app_label == 'django_celery_beat' %}schedule
+                            {% else %}apps{% endif %}
+                        </span>
+                        {{ app.name }}
+                    </caption>
+                    <thead>
+                        <tr>
+                            <th style="width: 40%;">{% trans 'Name' %}</th>
+                            <th style="width: 30%;">{% trans 'Hinzufügen' %}</th>
+                            <th style="width: 30%;">{% trans 'Ändern' %}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for model in app.models %}
+                        <tr>
+                            <td>
+                                <span style="display: flex; align-items: center; gap: 10px;">
+                                    <span class="material-icons" style="font-size: 18px; color: #5f6368;">
+                                        {% if 'employee' in model.object_name|lower %}person
+                                        {% elif 'document' in model.object_name|lower %}description
+                                        {% elif 'file' in model.object_name|lower %}folder
+                                        {% elif 'tenant' in model.object_name|lower %}business
+                                        {% elif 'user' in model.object_name|lower %}person
+                                        {% elif 'group' in model.object_name|lower %}group
+                                        {% elif 'log' in model.object_name|lower %}history
+                                        {% elif 'setting' in model.object_name|lower %}settings
+                                        {% elif 'task' in model.object_name|lower %}task_alt
+                                        {% elif 'permission' in model.object_name|lower %}lock
+                                        {% elif 'email' in model.object_name|lower %}email
+                                        {% elif 'category' in model.object_name|lower %}category
+                                        {% elif 'department' in model.object_name|lower %}corporate_fare
+                                        {% elif 'cost' in model.object_name|lower %}attach_money
+                                        {% elif 'leave' in model.object_name|lower %}beach_access
+                                        {% elif 'time' in model.object_name|lower %}schedule
+                                        {% elif 'version' in model.object_name|lower %}history
+                                        {% elif 'interval' in model.object_name|lower %}timer
+                                        {% elif 'crontab' in model.object_name|lower %}schedule
+                                        {% elif 'periodic' in model.object_name|lower %}repeat
+                                        {% else %}article{% endif %}
+                                    </span>
+                                    {% if model.admin_url %}
+                                        <a href="{{ model.admin_url }}" style="font-weight: 500;">{{ model.name }}</a>
+                                    {% else %}
+                                        <span style="color: #5f6368;">{{ model.name }}</span>
+                                    {% endif %}
+                                </span>
+                            </td>
+                            <td>
+                                {% if model.add_url %}
+                                    <a href="{{ model.add_url }}" style="display: inline-flex; align-items: center; gap: 4px; color: #2e7d32; font-size: 13px;">
+                                        <span class="material-icons" style="font-size: 16px;">add_circle</span>
+                                        Hinzufügen
+                                    </a>
+                                {% else %}
+                                    <span style="color: #9aa0a6;">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if model.admin_url %}
+                                    <a href="{{ model.admin_url }}" style="display: inline-flex; align-items: center; gap: 4px; color: #0066b3; font-size: 13px;">
+                                        <span class="material-icons" style="font-size: 16px;">edit</span>
+                                        Ändern
+                                    </a>
+                                {% else %}
+                                    <span style="color: #9aa0a6;">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>{% trans "You don't have permission to view or edit anything." %}</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block sidebar %}{% endblock %}
