@@ -9,7 +9,12 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-secret-key-change-in-produ
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',') if os.environ.get('ALLOWED_HOSTS') else ['*']
-CSRF_TRUSTED_ORIGINS = ['https://*.replit.dev', 'https://*.repl.co']
+
+# CSRF trusted origins - include custom domains from environment
+_csrf_origins = ['https://*.replit.dev', 'https://*.repl.co']
+if os.environ.get('CSRF_TRUSTED_ORIGINS'):
+    _csrf_origins.extend(os.environ.get('CSRF_TRUSTED_ORIGINS').split(','))
+CSRF_TRUSTED_ORIGINS = _csrf_origins
 
 INSTALLED_APPS = [
     'django.contrib.admin',
