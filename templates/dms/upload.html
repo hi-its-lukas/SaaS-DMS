@@ -1,0 +1,180 @@
+{% extends 'dms/base.html' %}
+
+{% block title %}Upload Document{% endblock %}
+
+{% block extra_css %}
+<style>
+    .upload-zone {
+        border: 3px dashed #ccc;
+        border-radius: 10px;
+        padding: 60px 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        background: #fafafa;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+        border-color: #3498db;
+        background: #f0f8ff;
+    }
+    .upload-zone.uploading {
+        border-color: #27ae60;
+        background: #f0fff4;
+    }
+    .upload-zone h3 {
+        color: #666;
+        margin-bottom: 10px;
+    }
+    .upload-zone p {
+        color: #999;
+        font-size: 14px;
+    }
+    .upload-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+    }
+    #file-input {
+        display: none;
+    }
+    .upload-list {
+        margin-top: 20px;
+    }
+    .upload-item {
+        display: flex;
+        align-items: center;
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 4px;
+        margin-bottom: 10px;
+    }
+    .upload-item .name {
+        flex: 1;
+        font-weight: 500;
+    }
+    .upload-item .status {
+        font-size: 14px;
+        color: #666;
+    }
+    .upload-item.success .status { color: #27ae60; }
+    .upload-item.error .status { color: #e74c3c; }
+    .progress-bar {
+        width: 100%;
+        height: 4px;
+        background: #e0e0e0;
+        border-radius: 2px;
+        margin-top: 10px;
+        overflow: hidden;
+    }
+    .progress-bar .fill {
+        height: 100%;
+        background: #3498db;
+        width: 0%;
+        transition: width 0.3s;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Upload Documents</h2>
+    <p style="color: #666; margin-bottom: 20px;">Drag and drop files or click to select. Supported: PDF, Word, Excel, Images</p>
+    
+    <div class="upload-zone" id="upload-zone">
+        <div class="upload-icon">📄</div>
+        <h3>Drop files here</h3>
+        <p>or click to browse</p>
+        <input type="file" id="file-input" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.tiff,.txt">
+    </div>
+    
+    <div class="upload-list" id="upload-list"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const uploadZone = document.getElementById('upload-zone');
+const fileInput = document.getElementById('file-input');
+const uploadList = document.getElementById('upload-list');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+
+uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('dragover');
+});
+
+uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('dragover');
+});
+
+uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+});
+
+fileInput.addEventListener('change', () => {
+    handleFiles(fileInput.files);
+});
+
+function handleFiles(files) {
+    for (const file of files) {
+        uploadFile(file);
+    }
+}
+
+async function uploadFile(file) {
+    const item = document.createElement('div');
+    item.className = 'upload-item';
+    item.innerHTML = `
+        <span class="name">${file.name}</span>
+        <span class="status">Uploading...</span>
+        <div class="progress-bar"><div class="fill"></div></div>
+    `;
+    uploadList.appendChild(item);
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('title', file.name.replace(/\.[^/.]+$/, ''));
+    
+    try {
+        const response = await fetch('{% url "dms:upload_file" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            item.className = 'upload-item success';
+            item.querySelector('.status').textContent = 'Uploaded!';
+            item.querySelector('.fill').style.width = '100%';
+        } else {
+            item.className = 'upload-item error';
+            item.querySelector('.status').textContent = result.error || 'Failed';
+        }
+    } catch (error) {
+        item.className = 'upload-item error';
+        item.querySelector('.status').textContent = 'Network error';
+    }
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

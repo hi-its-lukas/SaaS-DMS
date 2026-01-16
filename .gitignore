@@ -8,3 +8,32 @@ wheels/
 
 # Virtual environments
 .venv
+.pythonlibs/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+staticfiles/
+media/
+
+# Data directories
+data/sage_archive/*
+data/manual_input/*
+data/email_archive/*
+!data/*/.gitkeep
+
+# Secrets
+*.pem
+*.key
+o365_token_*.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

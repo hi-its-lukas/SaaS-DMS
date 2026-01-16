@@ -1,0 +1,117 @@
+{% extends 'dms/base.html' %}
+
+{% block title %}Tasks{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 style="margin-bottom: 20px;">Tasks</h2>
+    
+    <form method="get" style="display: flex; gap: 10px; margin-bottom: 20px;">
+        <select name="status" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
+            <option value="">All Status</option>
+            {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn">Filter</button>
+    </form>
+    
+    {% if tasks %}
+    <table>
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Document</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th>Assigned To</th>
+                <th>Due Date</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in tasks %}
+            <tr>
+                <td>
+                    <strong>{{ task.title }}</strong>
+                    {% if task.description %}
+                    <br><small style="color: #666;">{{ task.description|truncatewords:10 }}</small>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{% url 'dms:document_detail' task.document.pk %}">{{ task.document.title|truncatewords:5 }}</a>
+                </td>
+                <td>{{ task.get_status_display }}</td>
+                <td>
+                    {% if task.priority >= 3 %}
+                    <span style="color: #e74c3c; font-weight: bold;">{{ task.get_priority_display }}</span>
+                    {% else %}
+                    {{ task.get_priority_display }}
+                    {% endif %}
+                </td>
+                <td>{{ task.assigned_to.username|default:"-" }}</td>
+                <td>{{ task.due_date|date:"M d, Y"|default:"-" }}</td>
+                <td>
+                    {% if task.status != 'COMPLETED' %}
+                    <button class="btn btn-success" style="padding: 5px 10px; font-size: 12px;" 
+                            onclick="completeTask('{{ task.pk }}')">Complete</button>
+                    {% else %}
+                    <span style="color: #27ae60;">Done</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    {% if tasks.has_other_pages %}
+    <div style="margin-top: 20px; text-align: center;">
+        {% if tasks.has_previous %}
+        <a href="?page={{ tasks.previous_page_number }}" class="btn">Previous</a>
+        {% endif %}
+        <span style="margin: 0 15px;">Page {{ tasks.number }} of {{ tasks.paginator.num_pages }}</span>
+        {% if tasks.has_next %}
+        <a href="?page={{ tasks.next_page_number }}" class="btn">Next</a>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    {% else %}
+    <p style="color: #666; text-align: center; padding: 40px;">No tasks found.</p>
+    {% endif %}
+</div>
+
+<script>
+async function completeTask(taskId) {
+    try {
+        const response = await fetch(`/tasks/${taskId}/complete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
+        });
+        if (response.ok) {
+            location.reload();
+        }
+    } catch (error) {
+        alert('Failed to complete task');
+    }
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

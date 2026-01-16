@@ -4,4 +4,37 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["cargo", "file", "freetype", "gumbo", "harfbuzz", "jbig2dec", "lcms2", "libdmtx", "libiconv", "libimagequant", "libjpeg", "libjpeg_turbo", "libtiff", "libwebp", "libxcrypt", "mupdf", "openjpeg", "openssl", "pkg-config", "rustc", "swig", "tcl", "tk", "xcbuild", "zlib", "wkhtmltopdf", "imagemagick"]
+packages = ["cargo", "file", "freetype", "gumbo", "harfbuzz", "imagemagick", "jbig2dec", "lcms2", "libdmtx", "libiconv", "libimagequant", "libjpeg", "libjpeg_turbo", "libtiff", "libwebp", "libxcrypt", "mupdf", "openjpeg", "openssl", "pkg-config", "rustc", "swig", "tcl", "tk", "wkhtmltopdf", "xcbuild", "zlib"]
+
+[userenv]
+
+[userenv.shared]
+ENCRYPTION_KEY = "1P3OFKmP8ugSQHVJC_H7Kp_5QZ2ojGlOArZP81Jer_Y="
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "DMS Web Server"
+
+[[workflows.workflow]]
+name = "DMS Web Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python manage.py runserver 0.0.0.0:5000"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
