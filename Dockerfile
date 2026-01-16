@@ -15,6 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     xfonts-75dpi \
     xfonts-base \
+    tesseract-ocr \
+    tesseract-ocr-deu \
+    tesseract-ocr-eng \
+    poppler-utils \
     && wget -q https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb \
     && dpkg -i wkhtmltox_0.12.6.1-3.bookworm_amd64.deb || apt-get install -f -y \
     && rm wkhtmltox_0.12.6.1-3.bookworm_amd64.deb \

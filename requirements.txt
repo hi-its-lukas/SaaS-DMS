@@ -20,3 +20,5 @@ requests
 weasyprint
 zeep
 python-dateutil
+pdf2image
+pytesseract

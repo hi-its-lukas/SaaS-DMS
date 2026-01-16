@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from .models import Document, ProcessedFile, Employee, Task, EmailConfig, SystemLog, Tenant
 from .encryption import encrypt_data, decrypt_data, calculate_sha256, encrypt_file
+from .ocr import process_document_with_ocr, classify_document, extract_employee_info
 import re
 
 logger = logging.getLogger('dms')
@@ -127,6 +128,10 @@ def scan_sage_archive(self):
                     employee = None
                     status = 'UNASSIGNED'
                     needs_review = False
+                    doc_type = 'UNBEKANNT'
+                    doc_type_confidence = 0.0
+                    ocr_text = ''
+                    category_suggestion = None
                     
                     if file_path.suffix.lower() == '.pdf':
                         dm_data = extract_employee_from_datamatrix(str(file_path))
@@ -140,6 +145,28 @@ def scan_sage_archive(self):
                                 status = 'ASSIGNED'
                             else:
                                 status = 'UNASSIGNED'
+                    
+                    try:
+                        ocr_result = process_document_with_ocr(content, mime_type)
+                        if ocr_result:
+                            ocr_text = ocr_result.get('text', '')[:10000]
+                            doc_type = ocr_result.get('doc_type', 'UNBEKANNT')
+                            doc_type_confidence = ocr_result.get('doc_type_confidence', 0.0)
+                            category_suggestion = ocr_result.get('category_suggestion')
+                            
+                            if not employee and ocr_result.get('employee_info'):
+                                emp_info = ocr_result['employee_info']
+                                if emp_info.get('employee_id'):
+                                    employee = find_employee_by_id(emp_info['employee_id'], tenant=tenant)
+                                    if employee:
+                                        status = 'ASSIGNED'
+                                        log_system_event('INFO', 'OCR', 
+                                            f"Mitarbeiter via OCR erkannt: {employee.first_name} {employee.last_name}",
+                                            {'document': file_path.name, 'employee_id': emp_info['employee_id']})
+                    except Exception as ocr_error:
+                        log_system_event('WARNING', 'OCR', 
+                            f"OCR-Verarbeitung fehlgeschlagen: {file_path.name}",
+                            {'error': str(ocr_error)})
                     
                     document = Document.objects.create(
                         tenant=tenant,
@@ -156,7 +183,11 @@ def scan_sage_archive(self):
                         metadata={
                             'original_path': str(file_path),
                             'needs_review': needs_review,
-                            'tenant_code': tenant_code
+                            'tenant_code': tenant_code,
+                            'doc_type': doc_type,
+                            'doc_type_confidence': doc_type_confidence,
+                            'category_suggestion': category_suggestion,
+                            'ocr_text_preview': ocr_text[:500] if ocr_text else ''
                         }
                     )
                     
@@ -237,6 +268,35 @@ def scan_manual_input(self):
                 encrypted_content = encrypt_data(content)
                 mime_type = get_mime_type(str(file_path))
                 
+                employee = None
+                status = 'UNASSIGNED'
+                doc_type = 'UNBEKANNT'
+                doc_type_confidence = 0.0
+                category_suggestion = None
+                
+                try:
+                    ocr_result = process_document_with_ocr(content, mime_type)
+                    if ocr_result:
+                        ocr_text = ocr_result.get('text', '')[:10000]
+                        doc_type = ocr_result.get('doc_type', 'UNBEKANNT')
+                        doc_type_confidence = ocr_result.get('doc_type_confidence', 0.0)
+                        category_suggestion = ocr_result.get('category_suggestion')
+                        
+                        if ocr_result.get('employee_info'):
+                            emp_info = ocr_result['employee_info']
+                            if emp_info.get('employee_id'):
+                                employee = find_employee_by_id(emp_info['employee_id'])
+                                if employee:
+                                    status = 'ASSIGNED'
+                                    log_system_event('INFO', 'OCR', 
+                                        f"Mitarbeiter via OCR erkannt: {employee.first_name} {employee.last_name}",
+                                        {'document': file_path.name, 'employee_id': emp_info['employee_id']})
+                except Exception as ocr_error:
+                    log_system_event('WARNING', 'OCR', 
+                        f"OCR-Verarbeitung fehlgeschlagen: {file_path.name}",
+                        {'error': str(ocr_error)})
+                    ocr_text = ''
+                
                 document = Document.objects.create(
                     title=file_path.stem,
                     original_filename=file_path.name,
@@ -244,10 +304,17 @@ def scan_manual_input(self):
                     mime_type=mime_type,
                     encrypted_content=encrypted_content,
                     file_size=len(content),
-                    status='UNASSIGNED',
+                    employee=employee,
+                    status=status,
                     source='MANUAL',
                     sha256_hash=file_hash,
-                    metadata={'original_path': str(file_path)}
+                    metadata={
+                        'original_path': str(file_path),
+                        'doc_type': doc_type,
+                        'doc_type_confidence': doc_type_confidence,
+                        'category_suggestion': category_suggestion,
+                        'ocr_text_preview': ocr_text[:500] if ocr_text else ''
+                    }
                 )
                 
                 ProcessedFile.objects.create(
@@ -261,8 +328,8 @@ def scan_manual_input(self):
                 
                 processed_count += 1
                 log_system_event('INFO', 'ManualScanner', 
-                    f"Processed file: {file_path.name}",
-                    {'document_id': str(document.id)})
+                    f"Verarbeitet: {file_path.name} (Typ: {doc_type}, Konfidenz: {doc_type_confidence:.0%})",
+                    {'document_id': str(document.id), 'doc_type': doc_type})
                 
             except Exception as e:
                 error_count += 1
