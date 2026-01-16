@@ -1,32 +1,54 @@
 {% extends 'dms/base.html' %}
 
 {% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
 
 {% block content %}
-<h2 style="margin-bottom: 20px;">Dashboard</h2>
-
 <div class="stats">
     <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-card-icon">
+                <span class="material-icons">description</span>
+            </div>
+        </div>
         <h3>{{ stats.total_documents }}</h3>
         <p>Dokumente gesamt</p>
     </div>
     <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-card-icon" style="background: #fff8e1; color: var(--warning);">
+                <span class="material-icons">help_outline</span>
+            </div>
+        </div>
         <h3>{{ stats.unassigned }}</h3>
         <p>Nicht zugewiesen</p>
     </div>
     <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-card-icon" style="background: #ffebee; color: var(--error);">
+                <span class="material-icons">warning</span>
+            </div>
+        </div>
         <h3>{{ stats.review_needed }}</h3>
         <p>Prüfung erforderlich</p>
     </div>
     <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-card-icon" style="background: #e8f5e9; color: var(--success);">
+                <span class="material-icons">task_alt</span>
+            </div>
+        </div>
         <h3>{{ stats.open_tasks }}</h3>
         <p>Offene Aufgaben</p>
     </div>
 </div>
 
-<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
     <div class="card">
-        <h2>Aktuelle Dokumente</h2>
+        <div class="card-header">
+            <h2>Aktuelle Dokumente</h2>
+            <a href="{% url 'dms:document_list' %}" class="btn btn-sm btn-outline">Alle anzeigen</a>
+        </div>
         {% if recent_documents %}
         <table>
             <thead>
@@ -40,44 +62,77 @@
             <tbody>
                 {% for doc in recent_documents %}
                 <tr>
-                    <td>{{ doc.title }}</td>
+                    <td style="font-weight: 500;">{{ doc.title }}</td>
                     <td>
                         <span class="badge badge-{{ doc.status|lower }}">{{ doc.get_status_display }}</span>
                     </td>
-                    <td>{{ doc.get_source_display }}</td>
-                    <td>{{ doc.created_at|date:"d.m.Y" }}</td>
+                    <td style="color: var(--text-secondary);">{{ doc.get_source_display }}</td>
+                    <td style="color: var(--text-secondary);">{{ doc.created_at|date:"d.m.Y" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         {% else %}
-        <p style="color: #666;">Noch keine Dokumente. <a href="{% url 'dms:upload_page' %}">Laden Sie Ihr erstes Dokument hoch</a></p>
+        <div class="empty-state">
+            <span class="material-icons">inbox</span>
+            <h3>Keine Dokumente</h3>
+            <p>Laden Sie Ihr erstes Dokument hoch</p>
+            <a href="{% url 'dms:upload_page' %}" class="btn" style="margin-top: 16px;">
+                <span class="material-icons">cloud_upload</span>
+                Dokument hochladen
+            </a>
+        </div>
         {% endif %}
     </div>
     
     <div class="card">
-        <h2>Offene Aufgaben</h2>
+        <div class="card-header">
+            <h2>Offene Aufgaben</h2>
+            <a href="{% url 'dms:task_list' %}" class="btn btn-sm btn-outline">Alle</a>
+        </div>
         {% if open_tasks %}
-        <ul style="list-style: none;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
             {% for task in open_tasks %}
-            <li style="padding: 10px 0; border-bottom: 1px solid #eee;">
-                <strong>{{ task.title }}</strong>
-                <br><small style="color: #666;">Priorität: {{ task.get_priority_display }}</small>
-            </li>
+            <div style="padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-md); border-left: 3px solid {% if task.priority == 'HIGH' %}var(--error){% elif task.priority == 'MEDIUM' %}var(--warning){% else %}var(--primary){% endif %};">
+                <div style="font-weight: 500; margin-bottom: 4px;">{{ task.title }}</div>
+                <div style="font-size: 12px; color: var(--text-secondary);">
+                    <span class="badge badge-{% if task.priority == 'HIGH' %}error{% elif task.priority == 'MEDIUM' %}unassigned{% else %}active{% endif %}" style="font-size: 10px;">
+                        {{ task.get_priority_display }}
+                    </span>
+                </div>
+            </div>
             {% endfor %}
-        </ul>
+        </div>
         {% else %}
-        <p style="color: #666;">Keine offenen Aufgaben.</p>
+        <div class="empty-state" style="padding: 24px;">
+            <span class="material-icons">check_circle</span>
+            <p style="margin-top: 8px;">Keine offenen Aufgaben</p>
+        </div>
         {% endif %}
     </div>
 </div>
 
-<div class="card" style="margin-top: 20px;">
-    <h2>Schnellaktionen</h2>
-    <div style="display: flex; gap: 10px; margin-top: 10px;">
-        <a href="{% url 'dms:upload_page' %}" class="btn btn-success">Dokument hochladen</a>
-        <a href="{% url 'dms:document_list' %}?status=UNASSIGNED" class="btn">Nicht zugewiesene anzeigen</a>
-        <a href="{% url 'dms:document_list' %}?status=REVIEW_NEEDED" class="btn btn-danger">Prüfung erforderlich</a>
+<div class="card" style="margin-top: 24px;">
+    <div class="card-header">
+        <h2>Schnellaktionen</h2>
+    </div>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <a href="{% url 'dms:upload_page' %}" class="btn btn-success">
+            <span class="material-icons">cloud_upload</span>
+            Dokument hochladen
+        </a>
+        <a href="{% url 'dms:document_list' %}?status=UNASSIGNED" class="btn">
+            <span class="material-icons">help_outline</span>
+            Nicht zugewiesene anzeigen
+        </a>
+        <a href="{% url 'dms:document_list' %}?status=REVIEW_NEEDED" class="btn btn-danger">
+            <span class="material-icons">warning</span>
+            Prüfung erforderlich
+        </a>
+        <a href="{% url 'dms:sage_sync_dashboard' %}" class="btn btn-outline">
+            <span class="material-icons">sync</span>
+            Sage synchronisieren
+        </a>
     </div>
 </div>
 {% endblock %}

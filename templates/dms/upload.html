@@ -1,88 +1,133 @@
 {% extends 'dms/base.html' %}
 
 {% block title %}Dokument hochladen{% endblock %}
+{% block page_title %}Dokument hochladen{% endblock %}
 
 {% block extra_css %}
 <style>
     .upload-zone {
-        border: 3px dashed #ccc;
-        border-radius: 10px;
-        padding: 60px 20px;
+        border: 2px dashed var(--border);
+        border-radius: var(--radius-lg);
+        padding: 64px 24px;
         text-align: center;
         cursor: pointer;
-        transition: all 0.3s;
-        background: #fafafa;
+        transition: all 0.2s ease;
+        background: var(--bg-secondary);
     }
     .upload-zone:hover, .upload-zone.dragover {
-        border-color: #3498db;
-        background: #f0f8ff;
+        border-color: var(--primary);
+        background: var(--primary-light);
     }
     .upload-zone.uploading {
-        border-color: #27ae60;
-        background: #f0fff4;
+        border-color: var(--success);
+        background: #e8f5e9;
     }
     .upload-zone h3 {
-        color: #666;
-        margin-bottom: 10px;
+        color: var(--text-primary);
+        margin-bottom: 8px;
+        font-size: 18px;
     }
     .upload-zone p {
-        color: #999;
+        color: var(--text-secondary);
         font-size: 14px;
     }
     .upload-icon {
-        font-size: 48px;
-        margin-bottom: 15px;
+        font-size: 56px;
+        margin-bottom: 16px;
+        color: var(--primary);
     }
     #file-input {
         display: none;
     }
     .upload-list {
-        margin-top: 20px;
+        margin-top: 24px;
     }
     .upload-item {
         display: flex;
         align-items: center;
-        padding: 10px;
-        background: #f8f9fa;
-        border-radius: 4px;
-        margin-bottom: 10px;
+        padding: 16px;
+        background: var(--bg-secondary);
+        border-radius: var(--radius-md);
+        margin-bottom: 12px;
+        border: 1px solid var(--border);
+    }
+    .upload-item .icon {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--radius-md);
+        background: var(--primary-light);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 16px;
+        color: var(--primary);
+    }
+    .upload-item .details {
+        flex: 1;
     }
     .upload-item .name {
-        flex: 1;
-        font-weight: 500;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 4px;
     }
     .upload-item .status {
-        font-size: 14px;
-        color: #666;
+        font-size: 13px;
+        color: var(--text-secondary);
     }
-    .upload-item.success .status { color: #27ae60; }
-    .upload-item.error .status { color: #e74c3c; }
+    .upload-item.success .status { color: var(--success); }
+    .upload-item.error .status { color: var(--error); }
+    .upload-item.success .icon { background: #e8f5e9; color: var(--success); }
+    .upload-item.error .icon { background: #ffebee; color: var(--error); }
     .progress-bar {
         width: 100%;
         height: 4px;
-        background: #e0e0e0;
+        background: var(--border);
         border-radius: 2px;
-        margin-top: 10px;
+        margin-top: 8px;
         overflow: hidden;
     }
     .progress-bar .fill {
         height: 100%;
-        background: #3498db;
+        background: var(--primary);
         width: 0%;
         transition: width 0.3s;
+    }
+    .supported-types {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin-top: 16px;
+    }
+    .type-badge {
+        padding: 4px 10px;
+        background: var(--bg-tertiary);
+        border-radius: 50px;
+        font-size: 11px;
+        color: var(--text-secondary);
+        font-weight: 500;
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="card">
-    <h2>Dokumente hochladen</h2>
-    <p style="color: #666; margin-bottom: 20px;">Dateien hierher ziehen oder klicken zum Auswählen. Unterstützt: PDF, Word, Excel, Bilder</p>
+    <div class="card-header">
+        <h2>Dokumente hochladen</h2>
+    </div>
+    <p style="color: var(--text-secondary); margin-bottom: 24px;">
+        Ziehen Sie Dateien in den Bereich oder klicken Sie zum Auswählen.
+    </p>
     
     <div class="upload-zone" id="upload-zone">
-        <div class="upload-icon">📄</div>
+        <span class="material-icons upload-icon">cloud_upload</span>
         <h3>Dateien hier ablegen</h3>
         <p>oder klicken zum Durchsuchen</p>
+        <div class="supported-types">
+            <span class="type-badge">PDF</span>
+            <span class="type-badge">Word</span>
+            <span class="type-badge">Excel</span>
+            <span class="type-badge">Bilder</span>
+        </div>
         <input type="file" id="file-input" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.tiff,.txt">
     </div>
     
@@ -127,9 +172,12 @@ async function uploadFile(file) {
     const item = document.createElement('div');
     item.className = 'upload-item';
     item.innerHTML = `
-        <span class="name">${file.name}</span>
-        <span class="status">Wird hochgeladen...</span>
-        <div class="progress-bar"><div class="fill"></div></div>
+        <div class="icon"><span class="material-icons">description</span></div>
+        <div class="details">
+            <div class="name">${file.name}</div>
+            <div class="status">Wird hochgeladen...</div>
+            <div class="progress-bar"><div class="fill"></div></div>
+        </div>
     `;
     uploadList.appendChild(item);
     
@@ -150,14 +198,18 @@ async function uploadFile(file) {
         
         if (result.success) {
             item.className = 'upload-item success';
-            item.querySelector('.status').textContent = 'Hochgeladen!';
+            item.querySelector('.icon').innerHTML = '<span class="material-icons">check_circle</span>';
+            item.querySelector('.status').textContent = 'Erfolgreich hochgeladen';
             item.querySelector('.fill').style.width = '100%';
+            item.querySelector('.fill').style.background = 'var(--success)';
         } else {
             item.className = 'upload-item error';
-            item.querySelector('.status').textContent = result.error || 'Fehlgeschlagen';
+            item.querySelector('.icon').innerHTML = '<span class="material-icons">error</span>';
+            item.querySelector('.status').textContent = result.error || 'Upload fehlgeschlagen';
         }
     } catch (error) {
         item.className = 'upload-item error';
+        item.querySelector('.icon').innerHTML = '<span class="material-icons">error</span>';
         item.querySelector('.status').textContent = 'Netzwerkfehler';
     }
 }

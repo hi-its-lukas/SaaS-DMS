@@ -1,52 +1,66 @@
 {% extends 'dms/base.html' %}
 
 {% block title %}Sage Cloud Synchronisation{% endblock %}
+{% block page_title %}Sage Cloud Synchronisation{% endblock %}
 
 {% block content %}
-<div class="card">
-    <h2>Sage HR Cloud Synchronisation</h2>
-    
-    {% if not is_configured %}
-    <div class="message message-error">
+{% if not is_configured %}
+<div class="message message-warning">
+    <span class="material-icons">warning</span>
+    <div>
         <strong>Nicht konfiguriert:</strong> Bitte konfigurieren Sie die Sage Cloud API-Einstellungen im 
-        <a href="{% url 'admin:dms_systemsettings_changelist' %}">Admin-Bereich</a>.
+        <a href="{% url 'admin:dms_systemsettings_changelist' %}" style="color: inherit; text-decoration: underline;">Admin-Bereich</a>.
     </div>
-    {% else %}
-    <p style="color: #27ae60; margin-bottom: 20px;">
-        Verbunden mit: <strong>{{ settings.sage_cloud_api_url }}</strong>
-    </p>
-    {% endif %}
 </div>
+{% endif %}
 
 <div class="stats">
     <div class="stat-card">
-        <h3 style="font-size: 1rem;">Mitarbeiter synchronisieren</h3>
-        <p style="margin-bottom: 15px;">Lädt alle Mitarbeiter von Sage HR Cloud und erstellt Personalakten</p>
+        <div class="stat-card-header">
+            <div class="stat-card-icon" style="background: #e8f5e9; color: var(--success);">
+                <span class="material-icons">people</span>
+            </div>
+        </div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Mitarbeiter synchronisieren</h3>
+        <p style="margin-bottom: 16px;">Lädt alle Mitarbeiter von Sage HR Cloud und erstellt Personalakten</p>
         <form method="post" action="{% url 'dms:sage_sync_employees' %}">
             {% csrf_token %}
             <button type="submit" class="btn btn-success" {% if not is_configured %}disabled{% endif %}>
+                <span class="material-icons">sync</span>
                 Mitarbeiter abrufen
             </button>
         </form>
     </div>
     
     <div class="stat-card">
-        <h3 style="font-size: 1rem;">Urlaubsanträge importieren</h3>
-        <p style="margin-bottom: 15px;">Importiert genehmigte Urlaubsanträge der letzten 30 Tage</p>
+        <div class="stat-card-header">
+            <div class="stat-card-icon">
+                <span class="material-icons">beach_access</span>
+            </div>
+        </div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Urlaubsanträge importieren</h3>
+        <p style="margin-bottom: 16px;">Importiert genehmigte Urlaubsanträge der letzten 30 Tage</p>
         <form method="post" action="{% url 'dms:sage_sync_leave_requests' %}">
             {% csrf_token %}
             <button type="submit" class="btn" {% if not is_configured %}disabled{% endif %}>
+                <span class="material-icons">download</span>
                 Urlaubsanträge abrufen
             </button>
         </form>
     </div>
     
     <div class="stat-card">
-        <h3 style="font-size: 1rem;">Zeiterfassung importieren</h3>
-        <p style="margin-bottom: 15px;">Importiert Zeiterfassung des Vormonats</p>
+        <div class="stat-card-header">
+            <div class="stat-card-icon" style="background: #fff8e1; color: var(--warning);">
+                <span class="material-icons">schedule</span>
+            </div>
+        </div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Zeiterfassung importieren</h3>
+        <p style="margin-bottom: 16px;">Importiert Zeiterfassung des Vormonats</p>
         <form method="post" action="{% url 'dms:sage_sync_timesheets' %}">
             {% csrf_token %}
             <button type="submit" class="btn" {% if not is_configured %}disabled{% endif %}>
+                <span class="material-icons">download</span>
                 Zeiterfassung abrufen
             </button>
         </form>
@@ -54,7 +68,32 @@
 </div>
 
 <div class="card">
-    <h2>Letzte Sync-Aktivitäten</h2>
+    <div class="card-header">
+        <h2>Verbindungsstatus</h2>
+    </div>
+    {% if is_configured %}
+    <div style="display: flex; align-items: center; gap: 12px; padding: 16px; background: #e8f5e9; border-radius: var(--radius-md);">
+        <span class="material-icons" style="color: var(--success);">check_circle</span>
+        <div>
+            <div style="font-weight: 600; color: var(--success);">Verbunden</div>
+            <div style="font-size: 13px; color: var(--text-secondary);">{{ settings.sage_cloud_api_url }}</div>
+        </div>
+    </div>
+    {% else %}
+    <div style="display: flex; align-items: center; gap: 12px; padding: 16px; background: #fff8e1; border-radius: var(--radius-md);">
+        <span class="material-icons" style="color: var(--warning);">error_outline</span>
+        <div>
+            <div style="font-weight: 600; color: var(--warning);">Nicht konfiguriert</div>
+            <div style="font-size: 13px; color: var(--text-secondary);">API URL und API Key müssen eingerichtet werden</div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Letzte Sync-Aktivitäten</h2>
+    </div>
     {% if recent_logs %}
     <table>
         <thead>
@@ -68,27 +107,37 @@
         <tbody>
             {% for log in recent_logs %}
             <tr>
-                <td>{{ log.timestamp|date:"d.m.Y H:i:s" }}</td>
+                <td style="color: var(--text-secondary);">{{ log.timestamp|date:"d.m.Y H:i:s" }}</td>
                 <td>
-                    <span class="badge badge-{% if log.level == 'ERROR' %}review_needed{% elif log.level == 'WARNING' %}unassigned{% else %}assigned{% endif %}">
+                    <span class="badge badge-{% if log.level == 'ERROR' %}error{% elif log.level == 'WARNING' %}unassigned{% else %}active{% endif %}">
                         {{ log.level }}
                     </span>
                 </td>
-                <td>{{ log.source }}</td>
+                <td style="font-weight: 500;">{{ log.source }}</td>
                 <td>{{ log.message|truncatechars:80 }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
     {% else %}
-    <p style="color: #666;">Keine Sync-Aktivitäten vorhanden.</p>
+    <div class="empty-state">
+        <span class="material-icons">history</span>
+        <h3>Keine Aktivitäten</h3>
+        <p>Es wurden noch keine Synchronisationen durchgeführt.</p>
+    </div>
     {% endif %}
 </div>
 
 <div class="card">
-    <h2>Einstellungen</h2>
-    <p>
-        <a href="{% url 'admin:dms_systemsettings_changelist' %}" class="btn">Sage Cloud Einstellungen bearbeiten</a>
+    <div class="card-header">
+        <h2>Einstellungen</h2>
+    </div>
+    <p style="margin-bottom: 16px; color: var(--text-secondary);">
+        Konfigurieren Sie die Sage Cloud API-Verbindung in den Systemeinstellungen.
     </p>
+    <a href="{% url 'admin:dms_systemsettings_changelist' %}" class="btn btn-outline">
+        <span class="material-icons">settings</span>
+        Sage Cloud Einstellungen bearbeiten
+    </a>
 </div>
 {% endblock %}

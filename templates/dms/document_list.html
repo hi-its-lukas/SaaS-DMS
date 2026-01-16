@@ -1,30 +1,42 @@
 {% extends 'dms/base.html' %}
 
 {% block title %}Dokumente{% endblock %}
+{% block page_title %}Dokumente{% endblock %}
 
 {% block content %}
 <div class="card">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <div class="card-header">
         <h2>Dokumente</h2>
-        <a href="{% url 'dms:upload_page' %}" class="btn btn-success">Neu hochladen</a>
+        <a href="{% url 'dms:upload_page' %}" class="btn btn-success">
+            <span class="material-icons" style="font-size: 16px;">cloud_upload</span>
+            Neu hochladen
+        </a>
     </div>
     
-    <form method="get" style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
-        <input type="text" name="search" placeholder="Suchen..." value="{{ request.GET.search }}" 
-               style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; flex: 1; min-width: 200px;">
-        <select name="status" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
+    <form method="get" class="filters">
+        <input type="text" name="search" class="form-control" style="width: 280px;" placeholder="Suchen..." value="{{ request.GET.search }}">
+        <select name="status" class="form-control" style="width: 160px;">
             <option value="">Alle Status</option>
             {% for value, label in status_choices %}
             <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
         </select>
-        <select name="source" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
+        <select name="source" class="form-control" style="width: 160px;">
             <option value="">Alle Quellen</option>
             {% for value, label in source_choices %}
             <option value="{{ value }}" {% if request.GET.source == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
         </select>
-        <button type="submit" class="btn">Filtern</button>
+        <button type="submit" class="btn">
+            <span class="material-icons" style="font-size: 16px;">search</span>
+            Filtern
+        </button>
+        {% if request.GET.search or request.GET.status or request.GET.source %}
+            <a href="{% url 'dms:document_list' %}" class="btn btn-outline">
+                <span class="material-icons" style="font-size: 16px;">clear</span>
+                Zurücksetzen
+            </a>
+        {% endif %}
     </form>
     
     {% if documents %}
@@ -38,31 +50,35 @@
                 <th>Mitarbeiter</th>
                 <th>Größe</th>
                 <th>Datum</th>
-                <th>Aktionen</th>
+                <th style="text-align: right;">Aktionen</th>
             </tr>
         </thead>
         <tbody>
             {% for doc in documents %}
             <tr>
                 <td>
-                    <strong>{{ doc.title }}</strong>
-                    <br><small style="color: #666;">{{ doc.original_filename }}</small>
+                    <div style="font-weight: 500;">{{ doc.title }}</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">{{ doc.original_filename }}</div>
                 </td>
                 <td>{{ doc.document_type.name|default:"-" }}</td>
                 <td>
                     <span class="badge badge-{{ doc.status|lower }}">{{ doc.get_status_display }}</span>
                 </td>
-                <td>{{ doc.get_source_display }}</td>
+                <td style="color: var(--text-secondary);">{{ doc.get_source_display }}</td>
                 <td>{{ doc.employee.full_name|default:"-" }}</td>
-                <td>
+                <td style="color: var(--text-secondary);">
                     {% if doc.file_size < 1024 %}{{ doc.file_size }} B
                     {% elif doc.file_size < 1048576 %}{{ doc.file_size|floatformat:0|divisibleby:1024 }} KB
                     {% else %}{{ doc.file_size|floatformat:1|divisibleby:1048576 }} MB{% endif %}
                 </td>
-                <td>{{ doc.created_at|date:"d.m.Y" }}</td>
-                <td>
-                    <a href="{% url 'dms:document_detail' doc.pk %}" class="btn" style="padding: 5px 10px; font-size: 12px;">Ansehen</a>
-                    <a href="{% url 'dms:document_download' doc.pk %}" class="btn btn-success" style="padding: 5px 10px; font-size: 12px;">Herunterladen</a>
+                <td style="color: var(--text-secondary);">{{ doc.created_at|date:"d.m.Y" }}</td>
+                <td style="text-align: right;">
+                    <a href="{% url 'dms:document_detail' doc.pk %}" class="btn btn-sm btn-outline">
+                        <span class="material-icons" style="font-size: 14px;">visibility</span>
+                    </a>
+                    <a href="{% url 'dms:document_download' doc.pk %}" class="btn btn-sm">
+                        <span class="material-icons" style="font-size: 14px;">download</span>
+                    </a>
                 </td>
             </tr>
             {% endfor %}
@@ -70,19 +86,35 @@
     </table>
     
     {% if documents.has_other_pages %}
-    <div style="margin-top: 20px; text-align: center;">
+    <div class="pagination">
         {% if documents.has_previous %}
-        <a href="?page={{ documents.previous_page_number }}" class="btn">Zurück</a>
+            <a href="?page={{ documents.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.source %}&source={{ request.GET.source }}{% endif %}">
+                <span class="material-icons" style="font-size: 16px; vertical-align: middle;">chevron_left</span>
+                Zurück
+            </a>
         {% endif %}
-        <span style="margin: 0 15px;">Seite {{ documents.number }} von {{ documents.paginator.num_pages }}</span>
+        
+        <span class="current">Seite {{ documents.number }} von {{ documents.paginator.num_pages }}</span>
+        
         {% if documents.has_next %}
-        <a href="?page={{ documents.next_page_number }}" class="btn">Weiter</a>
+            <a href="?page={{ documents.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.source %}&source={{ request.GET.source }}{% endif %}">
+                Weiter
+                <span class="material-icons" style="font-size: 16px; vertical-align: middle;">chevron_right</span>
+            </a>
         {% endif %}
     </div>
     {% endif %}
     
     {% else %}
-    <p style="color: #666; text-align: center; padding: 40px;">Keine Dokumente gefunden.</p>
+    <div class="empty-state">
+        <span class="material-icons">folder_off</span>
+        <h3>Keine Dokumente gefunden</h3>
+        <p>Es wurden keine Dokumente gefunden, die Ihren Filterkriterien entsprechen.</p>
+        <a href="{% url 'dms:upload_page' %}" class="btn" style="margin-top: 16px;">
+            <span class="material-icons">cloud_upload</span>
+            Dokument hochladen
+        </a>
+    </div>
     {% endif %}
 </div>
 {% endblock %}
