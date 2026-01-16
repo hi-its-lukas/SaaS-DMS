@@ -4,7 +4,7 @@ services:
     volumes:
       - static_volume:/app/staticfiles
       - /srv/sage_archiv:/data/sage_archive:ro
-      - ./data/manual_input:/data/manual_input
+      - /srv/manual_scan:/data/manual_input
       - ./data/email_archive:/data/email_archive
     expose:
       - 8000
@@ -34,7 +34,7 @@ services:
     command: celery -A dms_project worker -l INFO
     volumes:
       - /srv/sage_archiv:/data/sage_archive:ro
-      - ./data/manual_input:/data/manual_input
+      - /srv/manual_scan:/data/manual_input
       - ./data/email_archive:/data/email_archive
     env_file:
       - .env
