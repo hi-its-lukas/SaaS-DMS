@@ -1,0 +1,7 @@
+modules = ["python-3.11"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+packages = ["cargo", "file", "freetype", "gumbo", "harfbuzz", "jbig2dec", "lcms2", "libdmtx", "libiconv", "libimagequant", "libjpeg", "libjpeg_turbo", "libtiff", "libwebp", "libxcrypt", "mupdf", "openjpeg", "openssl", "pkg-config", "rustc", "swig", "tcl", "tk", "xcbuild", "zlib", "wkhtmltopdf", "imagemagick"]

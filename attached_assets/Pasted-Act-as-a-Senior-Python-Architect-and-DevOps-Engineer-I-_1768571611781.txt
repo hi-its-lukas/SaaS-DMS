@@ -1,0 +1,78 @@
+Act as a Senior Python Architect and DevOps Engineer. I need a production-ready, containerized **DMS (Document Management System)** specifically designed for HR and Corporate workflows.
+
+The system will run on an Ubuntu server via Docker Compose.
+
+### 1. High-Level Architecture
+The application is a Django-based monolith with asynchronous workers.
+* **Web Backend:** Django + Django Admin (GUI).
+* **Database:** PostgreSQL (Stores metadata, user permissions, and encrypted file blobs).
+* **Async Queue:** Celery + Redis (Handles OCR, PDF processing, Email fetching).
+* **File Services:** Samba Container (provides network shares).
+* **Integrations:** Microsoft Graph API (Email In/Out).
+
+### 2. Input Channels (Crucial Logic)
+The system must handle three distinct input methods with different logic:
+
+**Channel A: The "Sage HR" Archive (ReadOnly)**
+* **Source:** A local folder mounted via Docker (e.g., `/data/sage_archive`).
+* **Behavior:** This folder is managed by external software (Sage) and must NOT be modified.
+* **Logic:** "Idempotent Import".
+    * Recursively scan folders.
+    * Calculate SHA-256 hash of each file.
+    * Check DB `ProcessedFile` table. If hash exists -> SKIP.
+    * If new -> Import, encrypt, save to DB, mark hash as processed.
+    * **Special:** Check for DataMatrix codes (using `pylibdmtx`) to split multi-page PDFs based on employee ID changes.
+
+**Channel B: The "Manual Input" (Consume)**
+* **Source:** A second Samba share (e.g., `/data/manual_input`).
+* **Behavior:** Users or scanners drop files here.
+* **Logic:** "Consume & Delete".
+    * Watch for new files.
+    * Import, encrypt, save to DB.
+    * **Action:** Move original file to a `/processed` subfolder or delete it after successful DB commit.
+
+**Channel C: Drag'n'Drop Upload (Web UI)**
+* **UI:** Create a specific Django View with a Drag'n'Drop zone (JS/AJAX).
+* **Logic:** Direct upload to the DB (Encrypted).
+
+### 3. Email Integration (Microsoft Graph API)
+Use the `O365` or `msal` python library to integrate with Microsoft 365.
+* **Configuration:** Store TenantID, ClientID, and Secret in the DB (encrypted).
+* **Outbound:** Allow sending emails via the DMS (e.g., notifications).
+* **Inbound Monitoring:** Periodically poll a specific Inbox/Folder.
+    * **Action 1:** Save the raw email as `.eml` file in the DMS.
+    * **Action 2:** Convert the email body + attachments into a single `.pdf` (using `pdfkit` or similar).
+    * **Action 3:** Create a `Task` object in the database linked to these files (Status: Open).
+
+### 4. Data Models & Configuration (GUI)
+Use Django Admin to manage the configuration.
+* **Models:**
+    * `Document`: (UUID, EncryptedBlob, Owner, Status, Metadata JSON).
+    * `Employee`: (ID, Name, Department).
+    * `DocumentType`: (Name, RequiredFields JSON) - allowing dynamic attribute configuration.
+    * `Task`: (LinkedDocument, AssignedUser, DueDate, Priority).
+* **Status Workflow:** Documents have a status `['ASSIGNED', 'UNASSIGNED/INBOX', 'ARCHIVED']`.
+    * Files with unrecognizable DataMatrix codes go to `UNASSIGNED`.
+    * Emails go to `UNASSIGNED` (or create a Task).
+* **Permissions:** Use Django Groups. "HR Admin" sees everything. "Employee" sees only docs linked to their ID.
+
+### 5. Security
+* **Encryption:** Use `cryptography.fernet`. No file should ever be stored in plain text on the server disk (except inside the PostgreSQL volume).
+* **Samba:** Configure the Samba container to export:
+    * `[Sage_Archive]` (Read Only)
+    * `[Manual_Scan]` (Read/Write)
+    * Create a user accessible via env variables.
+
+### 6. Deliverables (Code Structure)
+Provide the following:
+1.  **`docker-compose.yml`**: Including Django, Postgres, Redis, Celery Worker, Celery Beat, and the Samba service (dperson/samba).
+2.  **`requirements.txt`**: Include `django`, `celery`, `redis`, `psycopg2-binary`, `pymupdf`, `pylibdmtx`, `cryptography`, `O365`, `pdfkit`.
+3.  **`models.py`**: The complete database schema.
+4.  **`tasks.py`**: The Celery tasks for:
+    * Scanning Sage Folder (Hash check).
+    * Scanning Manual Folder (Consume).
+    * Polling MS Graph (Email processing).
+5.  **`views.py`**: A simple view for the Drag'n'Drop upload.
+6.  **`samba_config`**: Instructions on how to configure the two shares in `docker-compose`.
+
+**Important:** Focus on error handling. If the DataMatrix scanner fails, do NOT crash. Tag the file as 'Review Needed' and notify the admin.
