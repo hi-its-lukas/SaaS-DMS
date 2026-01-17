@@ -153,13 +153,62 @@ body.sidebar-mini-md .main-header {
     padding-left: 0 !important;
 }
 
-/* Sidebar komplett verstecken */
+/* Sidebar komplett verstecken - ALLE Breakpoints */
 .main-sidebar,
 .sidebar,
 .nav-sidebar,
-aside.main-sidebar {
+aside.main-sidebar,
+.sidebar-overlay,
+#sidebar-overlay {
     display: none !important;
     width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    left: -300px !important;
+    transform: translateX(-100%) !important;
+}
+
+/* AdminLTE Media Query Overrides für ALLE Bildschirmgrößen */
+@media (min-width: 768px) {
+    body:not(.sidebar-mini-md):not(.sidebar-mini-xs):not(.sidebar-mini) .content-wrapper,
+    body:not(.sidebar-mini-md):not(.sidebar-mini-xs):not(.sidebar-mini) .main-footer,
+    body:not(.sidebar-mini-md):not(.sidebar-mini-xs):not(.sidebar-mini) .main-header {
+        margin-left: 0 !important;
+    }
+    .main-sidebar {
+        display: none !important;
+        width: 0 !important;
+    }
+}
+
+@media (min-width: 992px) {
+    .content-wrapper,
+    .main-footer,
+    .main-header {
+        margin-left: 0 !important;
+        transition: none !important;
+    }
+    .main-sidebar,
+    .sidebar {
+        display: none !important;
+        width: 0 !important;
+        left: -300px !important;
+    }
+}
+
+@media (min-width: 1200px) {
+    .content-wrapper,
+    .main-footer,
+    .main-header {
+        margin-left: 0 !important;
+    }
+}
+
+/* Absolute Override für alle sidebar-bezogenen margin-left Regeln */
+[class*="sidebar"] ~ .content-wrapper,
+[class*="sidebar"] ~ .main-header,
+[class*="sidebar"] ~ .main-footer {
+    margin-left: 0 !important;
 }
 
 #content {
