@@ -277,7 +277,8 @@ def parse_employee_id_from_datamatrix(raw_data):
 def split_pdf_by_datamatrix(file_path, output_dir, timeout_per_page=5):
     """
     Teilt ein mehrseitiges PDF anhand von DataMatrix-Codes auf.
-    Jede Seite mit einem neuen Mitarbeiter-Code startet ein neues Dokument.
+    Bei jedem neuen Mitarbeiter-Code wird ein neues Segment gestartet.
+    Behält die Seitenreihenfolge bei (zusammenhängende Segmente).
     
     Args:
         file_path: Pfad zur Original-PDF
@@ -285,13 +286,12 @@ def split_pdf_by_datamatrix(file_path, output_dir, timeout_per_page=5):
         timeout_per_page: Timeout in Sekunden pro Seite
         
     Returns:
-        list of dicts: [{'file_path': str, 'employee_id': str, 'pages': list, 'employee': Employee or None}]
+        list of dicts: [{'file_path': str, 'employee_id': str, 'pages': list, 'page_count': int}]
     """
     import fitz
     from pylibdmtx.pylibdmtx import decode
     from PIL import Image
     import io
-    import tempfile
     
     result = []
     
@@ -303,12 +303,14 @@ def split_pdf_by_datamatrix(file_path, output_dir, timeout_per_page=5):
             doc.close()
             return result
         
-        page_employee_map = []
-        current_employee_id = None
+        segments = []
+        current_segment = {'employee_id': None, 'pages': []}
         
         log_system_event('INFO', 'PDFSplitter', f"Scanne {total_pages} Seiten für DataMatrix-Codes: {Path(file_path).name}")
         
         for page_num in range(total_pages):
+            page_emp_id = None
+            
             try:
                 page = doc[page_num]
                 pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
@@ -316,7 +318,6 @@ def split_pdf_by_datamatrix(file_path, output_dir, timeout_per_page=5):
                 img = Image.open(io.BytesIO(img_data))
                 
                 decoded = decode(img)
-                page_emp_id = None
                 
                 for d in decoded:
                     try:
@@ -328,70 +329,76 @@ def split_pdf_by_datamatrix(file_path, output_dir, timeout_per_page=5):
                     except:
                         continue
                 
-                if page_emp_id:
-                    current_employee_id = page_emp_id
-                
-                page_employee_map.append({
-                    'page': page_num,
-                    'employee_id': current_employee_id,
-                    'has_own_code': page_emp_id is not None
-                })
-                
             except Exception as e:
                 logger.warning(f"Error scanning page {page_num}: {e}")
-                page_employee_map.append({
-                    'page': page_num,
-                    'employee_id': current_employee_id,
-                    'has_own_code': False
-                })
+            
+            if page_emp_id and page_emp_id != current_segment['employee_id']:
+                if current_segment['pages']:
+                    segments.append(current_segment)
+                current_segment = {'employee_id': page_emp_id, 'pages': [page_num]}
+            else:
+                current_segment['pages'].append(page_num)
+                if page_emp_id:
+                    current_segment['employee_id'] = page_emp_id
         
-        unique_employees = set(p['employee_id'] for p in page_employee_map if p['employee_id'])
+        if current_segment['pages']:
+            segments.append(current_segment)
         
-        if len(unique_employees) <= 1:
+        segments_with_employee = [s for s in segments if s['employee_id']]
+        
+        if len(segments_with_employee) <= 1:
             doc.close()
-            log_system_event('INFO', 'PDFSplitter', f"Nur ein Mitarbeiter gefunden, kein Split nötig: {Path(file_path).name}")
+            log_system_event('INFO', 'PDFSplitter', f"Nur ein Mitarbeiter-Segment gefunden, kein Split nötig: {Path(file_path).name}")
             return result
         
-        log_system_event('INFO', 'PDFSplitter', f"Gefunden: {len(unique_employees)} verschiedene Mitarbeiter in {Path(file_path).name}")
+        if segments and not segments[0]['employee_id'] and len(segments) > 1:
+            segments[1]['pages'] = segments[0]['pages'] + segments[1]['pages']
+            segments = segments[1:]
         
-        employee_pages = {}
-        for p in page_employee_map:
-            emp_id = p['employee_id']
-            if emp_id:
-                if emp_id not in employee_pages:
-                    employee_pages[emp_id] = []
-                employee_pages[emp_id].append(p['page'])
+        log_system_event('INFO', 'PDFSplitter', f"Gefunden: {len(segments)} Segmente in {Path(file_path).name}")
         
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         
         base_name = Path(file_path).stem
+        segment_counter = {}
         
-        for emp_id, pages in employee_pages.items():
+        for segment in segments:
+            emp_id = segment['employee_id']
+            pages = segment['pages']
+            
+            if not emp_id:
+                emp_id = 'UNBEKANNT'
+            
+            if emp_id not in segment_counter:
+                segment_counter[emp_id] = 0
+            segment_counter[emp_id] += 1
+            
             try:
                 new_doc = fitz.open()
                 
-                for page_num in sorted(pages):
+                for page_num in pages:
                     new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
                 
-                split_filename = f"{base_name}_MA{emp_id}.pdf"
+                suffix = f"_{segment_counter[emp_id]}" if segment_counter[emp_id] > 1 else ""
+                split_filename = f"{base_name}_MA{emp_id}{suffix}.pdf"
                 split_path = output_path / split_filename
                 new_doc.save(str(split_path))
                 new_doc.close()
                 
                 result.append({
                     'file_path': str(split_path),
-                    'employee_id': emp_id,
+                    'employee_id': emp_id if emp_id != 'UNBEKANNT' else None,
                     'pages': pages,
                     'page_count': len(pages),
                     'original_file': str(file_path)
                 })
                 
                 log_system_event('INFO', 'PDFSplitter', 
-                    f"Erstellt: {split_filename} ({len(pages)} Seiten für MA {emp_id})")
+                    f"Erstellt: {split_filename} ({len(pages)} Seiten, Segment für MA {emp_id})")
                 
             except Exception as e:
-                logger.error(f"Error creating split PDF for employee {emp_id}: {e}")
+                logger.error(f"Error creating split PDF for segment {emp_id}: {e}")
         
         doc.close()
         
@@ -742,13 +749,7 @@ def _run_sage_scan(task_self):
                     already_processed_count += 1
                 return None
             
-            # Jetzt erst Datei laden für Verschlüsselung
-            with open(file_path, 'rb') as f:
-                content = f.read()
-            encrypted_content = encrypt_data(content)
-            file_size = len(content)
-            
-            # Monatsordner extrahieren
+            # Monatsordner extrahieren (vor Content-Laden für Split-Check)
             month_folder = None
             try:
                 tenant_folder = sage_path / tenant_code
@@ -891,6 +892,12 @@ def _run_sage_scan(task_self):
             else:
                 doc_type, is_personnel, category, description = classify_sage_document(file_path.name)
                 status = 'COMPANY' if not is_personnel else 'UNASSIGNED'
+            
+            # Content erst hier laden (nach Split-Check für Memory-Optimierung)
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            encrypted_content = encrypt_data(content)
+            file_size = len(content)
             
             metadata = {
                 'original_path': str(file_path),
