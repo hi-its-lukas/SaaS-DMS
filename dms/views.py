@@ -872,3 +872,48 @@ def fulltext_search(request):
         'total_count': results.count(),
         'suggestions': suggestions,
     })
+
+
+@login_required
+def system_logs(request):
+    """Live-Ansicht der Systemlogs"""
+    source_filter = request.GET.get('source', '')
+    level_filter = request.GET.get('level', '')
+    limit = int(request.GET.get('limit', 100))
+    
+    logs = SystemLog.objects.all().order_by('-timestamp')
+    
+    if source_filter:
+        logs = logs.filter(source__icontains=source_filter)
+    if level_filter:
+        logs = logs.filter(level=level_filter)
+    
+    logs = logs[:limit]
+    
+    # Verfügbare Filter-Optionen
+    sources = SystemLog.objects.values_list('source', flat=True).distinct()
+    levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+    
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({
+            'logs': [
+                {
+                    'id': log.id,
+                    'timestamp': log.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                    'level': log.level,
+                    'source': log.source,
+                    'message': log.message,
+                    'details': log.details,
+                }
+                for log in logs
+            ]
+        })
+    
+    return render(request, 'dms/system_logs.html', {
+        'logs': logs,
+        'sources': sources,
+        'levels': levels,
+        'current_source': source_filter,
+        'current_level': level_filter,
+        'current_limit': limit,
+    })

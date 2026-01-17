@@ -30,4 +30,7 @@ urlpatterns = [
     path('sage-sync/employees/', views.sage_sync_employees, name='sage_sync_employees'),
     path('sage-sync/leave-requests/', views.sage_sync_leave_requests, name='sage_sync_leave_requests'),
     path('sage-sync/timesheets/', views.sage_sync_timesheets, name='sage_sync_timesheets'),
+    
+    # System Logs
+    path('logs/', views.system_logs, name='system_logs'),
 ]

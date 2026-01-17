@@ -1,0 +1,375 @@
+{% extends 'dms/base.html' %}
+
+{% block header_title %}Systemprotokoll{% endblock %}
+
+{% block extra_css %}
+<style>
+    .log-controls {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        background: var(--bg-card);
+        padding: 16px;
+        border-radius: var(--radius-lg);
+    }
+    
+    .log-controls select,
+    .log-controls input {
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 14px;
+    }
+    
+    .log-controls label {
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+    
+    .log-controls .control-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .auto-refresh-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+    }
+    
+    .auto-refresh-toggle input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+    }
+    
+    .log-container {
+        background: #1a1a2e;
+        border-radius: var(--radius-lg);
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        overflow: hidden;
+    }
+    
+    .log-header {
+        background: #16213e;
+        padding: 12px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #0f3460;
+    }
+    
+    .log-header h3 {
+        color: #e94560;
+        margin: 0;
+        font-size: 14px;
+    }
+    
+    .log-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #94a3b8;
+        font-size: 12px;
+    }
+    
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+        animation: pulse 2s infinite;
+    }
+    
+    .status-dot.paused {
+        background: #f59e0b;
+        animation: none;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    
+    .log-entries {
+        max-height: 600px;
+        overflow-y: auto;
+        padding: 0;
+    }
+    
+    .log-entry {
+        display: grid;
+        grid-template-columns: 150px 80px 120px 1fr;
+        gap: 12px;
+        padding: 8px 16px;
+        border-bottom: 1px solid #0f3460;
+        color: #cbd5e1;
+        align-items: start;
+    }
+    
+    .log-entry:hover {
+        background: rgba(255, 255, 255, 0.03);
+    }
+    
+    .log-entry.level-DEBUG { border-left: 3px solid #6b7280; }
+    .log-entry.level-INFO { border-left: 3px solid #3b82f6; }
+    .log-entry.level-WARNING { border-left: 3px solid #f59e0b; }
+    .log-entry.level-ERROR { border-left: 3px solid #ef4444; }
+    .log-entry.level-CRITICAL { border-left: 3px solid #dc2626; background: rgba(220, 38, 38, 0.1); }
+    
+    .log-timestamp {
+        color: #64748b;
+        font-size: 11px;
+    }
+    
+    .log-level {
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+    }
+    
+    .log-level.DEBUG { color: #6b7280; }
+    .log-level.INFO { color: #3b82f6; }
+    .log-level.WARNING { color: #f59e0b; }
+    .log-level.ERROR { color: #ef4444; }
+    .log-level.CRITICAL { color: #dc2626; }
+    
+    .log-source {
+        color: #a78bfa;
+        font-size: 12px;
+    }
+    
+    .log-message {
+        color: #e2e8f0;
+        word-break: break-word;
+    }
+    
+    .log-details {
+        margin-top: 8px;
+        padding: 8px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 4px;
+        font-size: 11px;
+        color: #94a3b8;
+    }
+    
+    .log-details pre {
+        margin: 0;
+        white-space: pre-wrap;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 48px;
+        color: #64748b;
+    }
+    
+    .btn-refresh {
+        background: var(--primary);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+    }
+    
+    .btn-refresh:hover {
+        background: var(--primary-dark);
+    }
+    
+    .btn-refresh .material-icons {
+        font-size: 18px;
+    }
+    
+    .btn-refresh.loading .material-icons {
+        animation: spin 1s linear infinite;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="log-controls">
+    <div class="control-group">
+        <label>Quelle</label>
+        <select id="sourceFilter">
+            <option value="">Alle Quellen</option>
+            {% for source in sources %}
+            <option value="{{ source }}" {% if source == current_source %}selected{% endif %}>{{ source }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    
+    <div class="control-group">
+        <label>Level</label>
+        <select id="levelFilter">
+            <option value="">Alle Level</option>
+            {% for level in levels %}
+            <option value="{{ level }}" {% if level == current_level %}selected{% endif %}>{{ level }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    
+    <div class="control-group">
+        <label>Limit</label>
+        <select id="limitFilter">
+            <option value="50" {% if current_limit == 50 %}selected{% endif %}>50</option>
+            <option value="100" {% if current_limit == 100 %}selected{% endif %}>100</option>
+            <option value="200" {% if current_limit == 200 %}selected{% endif %}>200</option>
+            <option value="500" {% if current_limit == 500 %}selected{% endif %}>500</option>
+        </select>
+    </div>
+    
+    <button class="btn-refresh" id="refreshBtn" onclick="refreshLogs()">
+        <span class="material-icons">refresh</span>
+        Aktualisieren
+    </button>
+    
+    <div class="auto-refresh-toggle">
+        <input type="checkbox" id="autoRefresh" checked>
+        <label for="autoRefresh">Auto-Refresh (5s)</label>
+        <span class="status-dot" id="statusDot"></span>
+    </div>
+</div>
+
+<div class="log-container">
+    <div class="log-header">
+        <h3>Systemprotokoll</h3>
+        <div class="log-status">
+            <span id="logCount">{{ logs|length }}</span> Einträge
+        </div>
+    </div>
+    
+    <div class="log-entries" id="logEntries">
+        {% if logs %}
+            {% for log in logs %}
+            <div class="log-entry level-{{ log.level }}">
+                <span class="log-timestamp">{{ log.timestamp|date:"d.m.Y H:i:s" }}</span>
+                <span class="log-level {{ log.level }}">{{ log.level }}</span>
+                <span class="log-source">{{ log.source }}</span>
+                <div class="log-message">
+                    {{ log.message }}
+                    {% if log.details %}
+                    <div class="log-details">
+                        <pre>{{ log.details|pprint }}</pre>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <span class="material-icons" style="font-size: 48px; margin-bottom: 16px;">description</span>
+                <p>Keine Protokolleinträge gefunden</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let autoRefreshInterval = null;
+let lastLogId = 0;
+
+function getFilterParams() {
+    const source = document.getElementById('sourceFilter').value;
+    const level = document.getElementById('levelFilter').value;
+    const limit = document.getElementById('limitFilter').value;
+    
+    const params = new URLSearchParams();
+    if (source) params.set('source', source);
+    if (level) params.set('level', level);
+    params.set('limit', limit);
+    
+    return params.toString();
+}
+
+function refreshLogs() {
+    const btn = document.getElementById('refreshBtn');
+    btn.classList.add('loading');
+    
+    fetch(`/logs/?${getFilterParams()}`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        const container = document.getElementById('logEntries');
+        document.getElementById('logCount').textContent = data.logs.length;
+        
+        if (data.logs.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <span class="material-icons" style="font-size: 48px; margin-bottom: 16px;">description</span>
+                    <p>Keine Protokolleinträge gefunden</p>
+                </div>
+            `;
+        } else {
+            container.innerHTML = data.logs.map(log => `
+                <div class="log-entry level-${log.level}">
+                    <span class="log-timestamp">${log.timestamp}</span>
+                    <span class="log-level ${log.level}">${log.level}</span>
+                    <span class="log-source">${log.source}</span>
+                    <div class="log-message">
+                        ${escapeHtml(log.message)}
+                        ${log.details && Object.keys(log.details).length > 0 ? 
+                            `<div class="log-details"><pre>${JSON.stringify(log.details, null, 2)}</pre></div>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        btn.classList.remove('loading');
+    })
+    .catch(err => {
+        console.error('Log refresh failed:', err);
+        btn.classList.remove('loading');
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function toggleAutoRefresh() {
+    const checkbox = document.getElementById('autoRefresh');
+    const statusDot = document.getElementById('statusDot');
+    
+    if (checkbox.checked) {
+        statusDot.classList.remove('paused');
+        autoRefreshInterval = setInterval(refreshLogs, 5000);
+    } else {
+        statusDot.classList.add('paused');
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('autoRefresh').addEventListener('change', toggleAutoRefresh);
+    
+    ['sourceFilter', 'levelFilter', 'limitFilter'].forEach(id => {
+        document.getElementById(id).addEventListener('change', function() {
+            const params = getFilterParams();
+            window.history.replaceState({}, '', `/logs/?${params}`);
+            refreshLogs();
+        });
+    });
+    
+    toggleAutoRefresh();
+});
+</script>
+{% endblock %}
