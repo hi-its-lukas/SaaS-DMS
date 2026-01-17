@@ -825,6 +825,11 @@
             <a href="#" class="header-icon-btn" title="Hilfe">
                 <span class="material-icons">help_outline</span>
             </a>
+            {% if perms.dms.change_systemsettings %}
+            <a href="{% url 'dms:admin_maintenance' %}" class="header-icon-btn" title="Systemwartung">
+                <span class="material-icons">build</span>
+            </a>
+            {% endif %}
             <div class="user-avatar" title="{{ request.user.username }}">
                 {{ request.user.username|slice:":2"|upper }}
             </div>

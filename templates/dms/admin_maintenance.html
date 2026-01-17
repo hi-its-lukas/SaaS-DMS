@@ -1,0 +1,217 @@
+{% extends 'dms/base.html' %}
+
+{% block title %}Systemwartung{% endblock %}
+{% block page_title %}Systemwartung{% endblock %}
+
+{% block content %}
+{% if messages %}
+<div style="margin-bottom: 24px;">
+    {% for message in messages %}
+    <div class="message message-{% if message.tags == 'error' %}error{% elif message.tags == 'warning' %}warning{% else %}success{% endif %}">
+        <span class="material-icons">{% if message.tags == 'error' %}error{% elif message.tags == 'warning' %}warning{% else %}check_circle{% endif %}</span>
+        <div>{{ message }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="stats">
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-card-icon" style="background: #e3f2fd; color: #1976d2;">
+                <span class="material-icons">folder_special</span>
+            </div>
+        </div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Aktenplan erstellen</h3>
+        <p style="margin-bottom: 16px;">Erstellt oder aktualisiert die 48 Standard-Kategorien für den HR-Aktenplan</p>
+        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+            <strong>{{ stats.file_categories }}</strong> Aktenkategorien vorhanden
+        </div>
+        <form method="post" action="{% url 'dms:admin_run_create_filing_plan' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn">
+                <span class="material-icons">create_new_folder</span>
+                Aktenplan erstellen
+            </button>
+        </form>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-card-icon" style="background: #fff3e0; color: #f57c00;">
+                <span class="material-icons">link</span>
+            </div>
+        </div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Dokumenttypen verknüpfen</h3>
+        <p style="margin-bottom: 16px;">Verknüpft DocumentTypes mit den passenden FileCategories</p>
+        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+            <strong>{{ stats.document_types }}</strong> Dokumenttypen, <strong>{{ stats.linked_types }}</strong> verknüpft
+        </div>
+        <form method="post" action="{% url 'dms:admin_run_link_doctypes' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn">
+                <span class="material-icons">sync_alt</span>
+                Verknüpfen
+            </button>
+        </form>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-card-icon" style="background: #e8f5e9; color: var(--success);">
+                <span class="material-icons">drive_file_move</span>
+            </div>
+        </div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Dokumente ablegen</h3>
+        <p style="margin-bottom: 16px;">Legt bestehende Dokumente nachträglich in Personalakten ab</p>
+        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+            <strong>{{ stats.documents_pending }}</strong> Dokumente ohne Akte, <strong>{{ stats.documents_filed }}</strong> abgelegt
+        </div>
+        <form method="post" action="{% url 'dms:admin_run_file_documents' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success">
+                <span class="material-icons">move_to_inbox</span>
+                Jetzt ablegen
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-card-icon" style="background: #fce4ec; color: #c2185b;">
+                <span class="material-icons">scanner</span>
+            </div>
+        </div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Sage-Archiv scannen</h3>
+        <p style="margin-bottom: 16px;">Scannt das Sage-Archiv nach neuen Dokumenten</p>
+        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+            Letzter Scan: <strong>{{ stats.last_scan|default:"Nie" }}</strong>
+        </div>
+        <form method="post" action="{% url 'dms:admin_run_scan_sage' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn">
+                <span class="material-icons">manage_search</span>
+                Sage-Archiv scannen
+            </button>
+        </form>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-card-icon" style="background: #ede7f6; color: #7b1fa2;">
+                <span class="material-icons">cleaning_services</span>
+            </div>
+        </div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Verwaiste Einträge bereinigen</h3>
+        <p style="margin-bottom: 16px;">Löscht PersonnelFileEntries ohne gültiges Dokument</p>
+        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+            <strong>{{ stats.orphaned_entries }}</strong> verwaiste Einträge gefunden
+        </div>
+        <form method="post" action="{% url 'dms:admin_run_cleanup_orphans' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline" {% if stats.orphaned_entries == 0 %}disabled{% endif %}>
+                <span class="material-icons">delete_sweep</span>
+                Bereinigen
+            </button>
+        </form>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-card-icon" style="background: #e0f7fa; color: #00838f;">
+                <span class="material-icons">lock_reset</span>
+            </div>
+        </div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Scan-Sperren zurücksetzen</h3>
+        <p style="margin-bottom: 16px;">Setzt hängende Redis-Locks und fehlgeschlagene ScanJobs zurück</p>
+        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+            <strong>{{ stats.stale_scanjobs }}</strong> fehlgeschlagene Jobs
+        </div>
+        <form method="post" action="{% url 'dms:admin_run_reset_locks' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline">
+                <span class="material-icons">refresh</span>
+                Sperren zurücksetzen
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Systemstatus</h2>
+    </div>
+    <table>
+        <tbody>
+            <tr>
+                <td style="font-weight: 500; width: 300px;">Dokumente gesamt</td>
+                <td>{{ stats.total_documents }}</td>
+            </tr>
+            <tr>
+                <td style="font-weight: 500;">Mitarbeiter</td>
+                <td>{{ stats.total_employees }}</td>
+            </tr>
+            <tr>
+                <td style="font-weight: 500;">Personalakten</td>
+                <td>{{ stats.total_personnel_files }}</td>
+            </tr>
+            <tr>
+                <td style="font-weight: 500;">Dokumente in Personalakten</td>
+                <td>{{ stats.documents_filed }}</td>
+            </tr>
+            <tr>
+                <td style="font-weight: 500;">Mandanten</td>
+                <td>{{ stats.total_tenants }}</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Letzte Scan-Jobs</h2>
+    </div>
+    {% if recent_scanjobs %}
+    <table>
+        <thead>
+            <tr>
+                <th>Gestartet</th>
+                <th>Status</th>
+                <th>Kanal</th>
+                <th>Dateien</th>
+                <th>Dauer</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in recent_scanjobs %}
+            <tr>
+                <td style="color: var(--text-secondary);">{{ job.started_at|date:"d.m.Y H:i:s" }}</td>
+                <td>
+                    <span class="badge badge-{% if job.status == 'COMPLETED' %}active{% elif job.status == 'RUNNING' %}unassigned{% else %}error{% endif %}">
+                        {{ job.status }}
+                    </span>
+                </td>
+                <td>{{ job.channel }}</td>
+                <td>{{ job.files_processed }} / {{ job.files_found }}</td>
+                <td>
+                    {% if job.finished_at %}
+                        {{ job.duration_seconds|floatformat:1 }}s
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <span class="material-icons">history</span>
+        <h3>Keine Scan-Jobs</h3>
+        <p>Es wurden noch keine Scans durchgeführt.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

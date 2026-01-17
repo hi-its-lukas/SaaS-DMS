@@ -1087,3 +1087,205 @@ def document_split(request, pk):
         'page_range': range(1, page_count + 1),
         'employees': employees,
     })
+
+
+@login_required
+@permission_required('dms.change_systemsettings', raise_exception=True)
+def admin_maintenance(request):
+    """Admin maintenance dashboard for running management commands"""
+    from .models import (
+        Document, Employee, PersonnelFile, PersonnelFileEntry,
+        FileCategory, DocumentType, Tenant, ScanJob
+    )
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    documents_with_type_and_employee = Document.objects.filter(
+        document_type__isnull=False,
+        employee__isnull=False,
+        document_type__file_category__isnull=False
+    )
+    filed_doc_ids = PersonnelFileEntry.objects.values_list('document_id', flat=True)
+    documents_pending = documents_with_type_and_employee.exclude(id__in=filed_doc_ids).count()
+    
+    orphaned_entries = PersonnelFileEntry.objects.filter(document__isnull=True).count()
+    
+    stale_cutoff = timezone.now() - timedelta(hours=2)
+    stale_scanjobs = ScanJob.objects.filter(
+        status='RUNNING',
+        started_at__lt=stale_cutoff
+    ).count()
+    
+    last_scan_job = ScanJob.objects.filter(status='COMPLETED').order_by('-finished_at').first()
+    last_scan = last_scan_job.finished_at.strftime('%d.%m.%Y %H:%M') if last_scan_job else None
+    
+    stats = {
+        'total_documents': Document.objects.count(),
+        'total_employees': Employee.objects.filter(is_active=True).count(),
+        'total_personnel_files': PersonnelFile.objects.count(),
+        'documents_filed': PersonnelFileEntry.objects.count(),
+        'documents_pending': documents_pending,
+        'total_tenants': Tenant.objects.count(),
+        'file_categories': FileCategory.objects.count(),
+        'document_types': DocumentType.objects.count(),
+        'linked_types': DocumentType.objects.filter(file_category__isnull=False).count(),
+        'orphaned_entries': orphaned_entries,
+        'stale_scanjobs': stale_scanjobs,
+        'last_scan': last_scan,
+    }
+    
+    recent_scanjobs = ScanJob.objects.order_by('-started_at')[:10]
+    
+    return render(request, 'dms/admin_maintenance.html', {
+        'stats': stats,
+        'recent_scanjobs': recent_scanjobs,
+    })
+
+
+@login_required
+@permission_required('dms.change_systemsettings', raise_exception=True)
+@require_http_methods(['POST'])
+def admin_run_create_filing_plan(request):
+    """Run create_filing_plan management command"""
+    from django.core.management import call_command
+    from io import StringIO
+    
+    try:
+        out = StringIO()
+        call_command('create_filing_plan', stdout=out)
+        messages.success(request, 'Aktenplan erfolgreich erstellt/aktualisiert.')
+    except Exception as e:
+        messages.error(request, f'Fehler: {str(e)}')
+    
+    return redirect('dms:admin_maintenance')
+
+
+@login_required
+@permission_required('dms.change_systemsettings', raise_exception=True)
+@require_http_methods(['POST'])
+def admin_run_link_doctypes(request):
+    """Run link_doctypes_categories management command"""
+    from django.core.management import call_command
+    from io import StringIO
+    
+    try:
+        out = StringIO()
+        call_command('link_doctypes_categories', stdout=out)
+        messages.success(request, 'DocumentTypes erfolgreich mit FileCategories verknüpft.')
+    except Exception as e:
+        messages.error(request, f'Fehler: {str(e)}')
+    
+    return redirect('dms:admin_maintenance')
+
+
+@login_required
+@permission_required('dms.change_systemsettings', raise_exception=True)
+@require_http_methods(['POST'])
+def admin_run_file_documents(request):
+    """File existing documents to personnel files"""
+    from .models import Document, PersonnelFileEntry
+    
+    count = 0
+    try:
+        for doc in Document.objects.filter(
+            document_type__isnull=False,
+            employee__isnull=False,
+            document_type__file_category__isnull=False
+        ).select_related('document_type', 'document_type__file_category', 'employee'):
+            pf = getattr(doc.employee, 'personnel_file', None)
+            if not pf:
+                continue
+            
+            exists = PersonnelFileEntry.objects.filter(
+                personnel_file=pf,
+                document=doc
+            ).exists()
+            
+            if not exists:
+                PersonnelFileEntry.objects.create(
+                    personnel_file=pf,
+                    document=doc,
+                    category=doc.document_type.file_category,
+                    notes=f'Automatisch abgelegt aus {doc.document_type.name}'
+                )
+                count += 1
+        
+        messages.success(request, f'{count} Dokumente in Personalakten abgelegt.')
+    except Exception as e:
+        messages.error(request, f'Fehler: {str(e)}')
+    
+    return redirect('dms:admin_maintenance')
+
+
+@login_required
+@permission_required('dms.change_systemsettings', raise_exception=True)
+@require_http_methods(['POST'])
+def admin_run_scan_sage(request):
+    """Trigger Sage archive scan"""
+    from .tasks import scan_sage_archive
+    
+    try:
+        result = scan_sage_archive()
+        if result:
+            messages.success(request, f'Sage-Archiv gescannt: {result.get("files_processed", 0)} Dateien verarbeitet.')
+        else:
+            messages.warning(request, 'Scan läuft bereits oder konnte nicht gestartet werden.')
+    except Exception as e:
+        messages.error(request, f'Fehler: {str(e)}')
+    
+    return redirect('dms:admin_maintenance')
+
+
+@login_required
+@permission_required('dms.change_systemsettings', raise_exception=True)
+@require_http_methods(['POST'])
+def admin_run_cleanup_orphans(request):
+    """Clean up orphaned personnel file entries"""
+    from .models import PersonnelFileEntry
+    
+    try:
+        orphaned = PersonnelFileEntry.objects.filter(document__isnull=True)
+        count = orphaned.count()
+        orphaned.delete()
+        messages.success(request, f'{count} verwaiste Einträge gelöscht.')
+    except Exception as e:
+        messages.error(request, f'Fehler: {str(e)}')
+    
+    return redirect('dms:admin_maintenance')
+
+
+@login_required
+@permission_required('dms.change_systemsettings', raise_exception=True)
+@require_http_methods(['POST'])
+def admin_run_reset_locks(request):
+    """Reset stale scan locks and failed scan jobs"""
+    from .models import ScanJob
+    from django.utils import timezone
+    from datetime import timedelta
+    import redis
+    import os
+    
+    try:
+        stale_cutoff = timezone.now() - timedelta(hours=2)
+        stale_jobs = ScanJob.objects.filter(
+            status='RUNNING',
+            started_at__lt=stale_cutoff
+        )
+        job_count = stale_jobs.count()
+        stale_jobs.update(status='FAILED', error_message='Manuell zurückgesetzt')
+        
+        lock_count = 0
+        redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+        try:
+            r = redis.from_url(redis_url)
+            for key in r.scan_iter('dms:lock:*'):
+                r.delete(key)
+                lock_count += 1
+        except Exception:
+            pass
+        
+        messages.success(request, f'{job_count} fehlgeschlagene Jobs und {lock_count} Sperren zurückgesetzt.')
+    except Exception as e:
+        messages.error(request, f'Fehler: {str(e)}')
+    
+    return redirect('dms:admin_maintenance')
