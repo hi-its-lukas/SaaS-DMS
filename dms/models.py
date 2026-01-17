@@ -296,6 +296,55 @@ class SystemLog(models.Model):
         verbose_name_plural = "Systemprotokolle"
 
 
+class ScanJob(models.Model):
+    """Tracks scan job progress for dashboard display"""
+    STATUS_CHOICES = [
+        ('PENDING', 'Wartend'),
+        ('RUNNING', 'Läuft'),
+        ('COMPLETED', 'Abgeschlossen'),
+        ('FAILED', 'Fehlgeschlagen'),
+    ]
+    
+    SOURCE_CHOICES = [
+        ('SAGE', 'Sage Archiv'),
+        ('MANUAL', 'Manuelle Eingabe'),
+        ('EMAIL', 'E-Mail'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    
+    total_files = models.PositiveIntegerField(default=0)
+    processed_files = models.PositiveIntegerField(default=0)
+    skipped_files = models.PositiveIntegerField(default=0)
+    error_files = models.PositiveIntegerField(default=0)
+    
+    current_file = models.CharField(max_length=255, blank=True)
+    error_message = models.TextField(blank=True)
+    
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    
+    @property
+    def progress_percent(self):
+        if self.total_files == 0:
+            return 0
+        return int((self.processed_files + self.skipped_files + self.error_files) / self.total_files * 100)
+    
+    @property
+    def is_running(self):
+        return self.status == 'RUNNING'
+    
+    def __str__(self):
+        return f"{self.get_source_display()} - {self.get_status_display()} ({self.progress_percent}%)"
+    
+    class Meta:
+        ordering = ['-started_at']
+        verbose_name = "Scan-Auftrag"
+        verbose_name_plural = "Scan-Aufträge"
+
+
 class SystemSettings(models.Model):
     """Singleton model for system-wide configuration - editable via Django Admin"""
     

@@ -106,8 +106,13 @@ def sage_sync_timesheets(request):
 
 @login_required
 def index(request):
+    from .models import ScanJob
+    
     recent_documents = Document.objects.all()[:10]
     open_tasks = Task.objects.filter(status='OPEN')[:5]
+    
+    active_scans = ScanJob.objects.filter(status='RUNNING')
+    recent_scans = ScanJob.objects.exclude(status='RUNNING')[:3]
     
     stats = {
         'total_documents': Document.objects.count(),
@@ -120,6 +125,8 @@ def index(request):
         'recent_documents': recent_documents,
         'open_tasks': open_tasks,
         'stats': stats,
+        'active_scans': active_scans,
+        'recent_scans': recent_scans,
     })
 
 

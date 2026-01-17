@@ -8,7 +8,7 @@ from celery import shared_task
 from django.conf import settings
 from django.utils import timezone
 
-from .models import Document, ProcessedFile, Employee, Task, EmailConfig, SystemLog, Tenant
+from .models import Document, ProcessedFile, Employee, Task, EmailConfig, SystemLog, Tenant, ScanJob
 from .encryption import encrypt_data, decrypt_data, calculate_sha256, encrypt_file
 from .ocr import process_document_with_ocr, classify_document, extract_employee_info
 import re
@@ -333,17 +333,30 @@ def scan_sage_archive(self):
         log_system_event('WARNING', 'SageScanner', f"Sage archive path does not exist: {sage_path}")
         return {'status': 'error', 'message': 'Path does not exist'}
     
+    supported_extensions = {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.tiff', '.txt', '.csv'}
+    skip_files = {'thumbs.db', 'desktop.ini', '.ds_store'}
+    tenant_folder_pattern = re.compile(r'^\d{8}$')
+    month_folder_pattern = re.compile(r'^\d{6}$')
+    
+    all_files = []
+    for tenant_folder in sage_path.iterdir():
+        if tenant_folder.is_dir() and tenant_folder_pattern.match(tenant_folder.name):
+            for f in tenant_folder.rglob('*'):
+                if f.is_file() and f.suffix.lower() in supported_extensions and f.name.lower() not in skip_files:
+                    all_files.append(f)
+    
+    scan_job = ScanJob.objects.create(
+        source='SAGE',
+        status='RUNNING',
+        total_files=len(all_files)
+    )
+    
     processed_count = 0
     skipped_count = 0
     error_count = 0
     tenant_count = 0
     personnel_docs = 0
     company_docs = 0
-    
-    supported_extensions = {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.tiff', '.txt', '.csv'}
-    skip_files = {'thumbs.db', 'desktop.ini', '.ds_store'}
-    tenant_folder_pattern = re.compile(r'^\d{8}$')
-    month_folder_pattern = re.compile(r'^\d{6}$')
     
     try:
         for tenant_folder in sage_path.iterdir():
@@ -381,6 +394,8 @@ def scan_sage_archive(self):
                     
                     if ProcessedFile.objects.filter(tenant=tenant, sha256_hash=file_hash).exists():
                         skipped_count += 1
+                        scan_job.skipped_files = skipped_count
+                        scan_job.save(update_fields=['skipped_files'])
                         continue
                     
                     month_folder = None
@@ -479,6 +494,10 @@ def scan_sage_archive(self):
                     else:
                         company_docs += 1
                     
+                    scan_job.processed_files = processed_count
+                    scan_job.current_file = file_path.name[:255]
+                    scan_job.save(update_fields=['processed_files', 'current_file'])
+                    
                     if needs_review:
                         log_system_event('WARNING', 'SageScanner', 
                             f"File requires review (DataMatrix issue): {file_path.name}",
@@ -486,9 +505,19 @@ def scan_sage_archive(self):
                     
                 except Exception as e:
                     error_count += 1
+                    scan_job.error_files = error_count
+                    scan_job.save(update_fields=['error_files'])
                     log_system_event('ERROR', 'SageScanner', 
                         f"Failed to process file: {file_path.name}",
                         {'error': str(e), 'tenant': tenant_code})
+        
+        scan_job.status = 'COMPLETED'
+        scan_job.completed_at = timezone.now()
+        scan_job.processed_files = processed_count
+        scan_job.skipped_files = skipped_count
+        scan_job.error_files = error_count
+        scan_job.current_file = ''
+        scan_job.save()
         
         log_system_event('INFO', 'SageScanner', 
             f"Scan abgeschlossen: {processed_count} verarbeitet ({personnel_docs} Personal, {company_docs} Firma), "
@@ -505,6 +534,10 @@ def scan_sage_archive(self):
         }
         
     except Exception as e:
+        scan_job.status = 'FAILED'
+        scan_job.error_message = str(e)
+        scan_job.completed_at = timezone.now()
+        scan_job.save()
         log_system_event('CRITICAL', 'SageScanner', f"Sage scan failed: {str(e)}")
         raise self.retry(exc=e, countdown=60)
 

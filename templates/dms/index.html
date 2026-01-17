@@ -112,6 +112,71 @@
     </div>
 </div>
 
+{% if active_scans %}
+<div class="card" style="margin-top: 24px;">
+    <div class="card-header">
+        <h2>
+            <span class="material-icons" style="animation: spin 2s linear infinite; vertical-align: middle;">sync</span>
+            Aktive Verarbeitung
+        </h2>
+    </div>
+    {% for scan in active_scans %}
+    <div style="padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-weight: 500;">{{ scan.get_source_display }}</span>
+            <span style="color: var(--text-secondary);">{{ scan.progress_percent }}%</span>
+        </div>
+        <div style="background: var(--border); border-radius: 4px; height: 8px; overflow: hidden;">
+            <div style="background: var(--primary); height: 100%; width: {{ scan.progress_percent }}%; transition: width 0.5s;"></div>
+        </div>
+        <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+            {{ scan.processed_files }} von {{ scan.total_files }} Dateien
+            {% if scan.current_file %} | Aktuell: {{ scan.current_file|truncatechars:40 }}{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+<style>
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+</style>
+{% endif %}
+
+{% if recent_scans %}
+<div class="card" style="margin-top: 24px;">
+    <div class="card-header">
+        <h2>Letzte Scan-Aufträge</h2>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Quelle</th>
+                <th>Status</th>
+                <th>Verarbeitet</th>
+                <th>Übersprungen</th>
+                <th>Fehler</th>
+                <th>Datum</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for scan in recent_scans %}
+            <tr>
+                <td>{{ scan.get_source_display }}</td>
+                <td>
+                    <span class="badge badge-{% if scan.status == 'COMPLETED' %}assigned{% elif scan.status == 'FAILED' %}error{% else %}unassigned{% endif %}">
+                        {{ scan.get_status_display }}
+                    </span>
+                </td>
+                <td>{{ scan.processed_files }}</td>
+                <td>{{ scan.skipped_files }}</td>
+                <td>{{ scan.error_files }}</td>
+                <td>{{ scan.started_at|date:"d.m.Y H:i" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
 <div class="card" style="margin-top: 24px;">
     <div class="card-header">
         <h2>Schnellaktionen</h2>

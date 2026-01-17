@@ -7,7 +7,7 @@ from .models import (
     ProcessedFile, Task, EmailConfig, SystemLog, SystemSettings,
     ImportedLeaveRequest, ImportedTimesheet,
     FileCategory, PersonnelFile, PersonnelFileEntry, DocumentVersion,
-    AccessPermission, AuditLog
+    AccessPermission, AuditLog, ScanJob
 )
 from .encryption import encrypt_data, decrypt_data
 
@@ -506,6 +506,18 @@ class AuditLogAdmin(admin.ModelAdmin):
         return False
 
 admin.site.register(AuditLog, AuditLogAdmin)
+
+
+class ScanJobAdmin(admin.ModelAdmin):
+    list_display = ['id', 'source', 'status', 'progress_display', 'processed_files', 'total_files', 'started_at', 'completed_at']
+    list_filter = ['status', 'source', 'started_at']
+    readonly_fields = ['id', 'started_at', 'completed_at', 'progress_display']
+    
+    def progress_display(self, obj):
+        return f"{obj.progress_percent}%"
+    progress_display.short_description = 'Fortschritt'
+
+admin.site.register(ScanJob, ScanJobAdmin)
 
 
 admin.site.site_header = 'DMS Administration'
