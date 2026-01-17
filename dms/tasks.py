@@ -29,20 +29,32 @@ def get_redis_client():
 @contextmanager
 def distributed_lock(lock_name, timeout=3600):
     """
-    Redis-basierter verteilter Lock.
+    Redis-basierter verteilter Lock mit SETNX (atomar).
     Verhindert, dass zwei Celery-Worker gleichzeitig denselben Job starten.
     """
+    import uuid
     client = get_redis_client()
     lock_key = f"dms:lock:{lock_name}"
-    lock = client.lock(lock_key, timeout=timeout, blocking=False)
-    acquired = lock.acquire(blocking=False)
+    lock_value = str(uuid.uuid4())
+    
+    # SETNX ist atomar - nur EIN Client kann erfolgreich setzen
+    acquired = client.set(lock_key, lock_value, nx=True, ex=timeout)
+    
     try:
-        yield acquired
+        yield bool(acquired)
     finally:
         if acquired:
+            # Nur löschen wenn wir den Lock besitzen (Lua-Script für Atomarität)
+            lua_script = """
+            if redis.call("get", KEYS[1]) == ARGV[1] then
+                return redis.call("del", KEYS[1])
+            else
+                return 0
+            end
+            """
             try:
-                lock.release()
-            except redis.exceptions.LockError:
+                client.eval(lua_script, 1, lock_key, lock_value)
+            except Exception:
                 pass
 
 
