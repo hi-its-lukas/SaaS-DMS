@@ -130,7 +130,8 @@
             <div style="background: var(--primary); height: 100%; width: {{ scan.progress_percent }}%; transition: width 0.5s;"></div>
         </div>
         <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
-            {{ scan.processed_files }} von {{ scan.total_files }} Dateien
+            {{ scan.processed_files }} von {{ scan.total_files }} neue Dateien
+            {% if scan.skipped_files %} ({{ scan.skipped_files }} bereits vorhanden){% endif %}
             {% if scan.current_file %} | Aktuell: {{ scan.current_file|truncatechars:40 }}{% endif %}
         </div>
     </div>
@@ -151,8 +152,8 @@
             <tr>
                 <th>Quelle</th>
                 <th>Status</th>
-                <th>Verarbeitet</th>
-                <th>Übersprungen</th>
+                <th>Neu verarbeitet</th>
+                <th>Bereits vorhanden</th>
                 <th>Fehler</th>
                 <th>Datum</th>
             </tr>

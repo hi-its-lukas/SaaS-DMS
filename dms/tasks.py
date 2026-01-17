@@ -389,6 +389,8 @@ def _run_sage_scan(task_self):
     
     if not sage_path.exists():
         log_system_event('WARNING', 'SageScanner', f"Sage archive path does not exist: {sage_path}")
+        scan_job.status = 'FAILED'
+        scan_job.save(update_fields=['status'])
         return {'status': 'error', 'message': 'Path does not exist'}
     
     supported_extensions = {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.tiff', '.txt', '.csv'}
@@ -396,196 +398,215 @@ def _run_sage_scan(task_self):
     tenant_folder_pattern = re.compile(r'^\d{8}$')
     month_folder_pattern = re.compile(r'^\d{6}$')
     
-    all_files = []
-    for tenant_folder in sage_path.iterdir():
-        if tenant_folder.is_dir() and tenant_folder_pattern.match(tenant_folder.name):
-            for f in tenant_folder.rglob('*'):
-                if f.is_file() and f.suffix.lower() in supported_extensions and f.name.lower() not in skip_files:
-                    all_files.append(f)
+    # Phase 1: Alle bekannten Hashes aus DB laden (pro Mandant)
+    log_system_event('INFO', 'SageScanner', "Lade bekannte Dateien aus Datenbank...")
+    known_hashes_by_tenant = {}
+    for tenant in Tenant.objects.filter(is_active=True):
+        known_hashes_by_tenant[tenant.code] = set(
+            ProcessedFile.objects.filter(tenant=tenant).values_list('sha256_hash', flat=True)
+        )
     
-    scan_job.total_files = len(all_files)
-    scan_job.save(update_fields=['total_files'])
+    # Phase 2: Alle Dateien scannen und nur NEUE zählen
+    new_files = []  # Liste von (file_path, tenant_code, file_hash)
+    already_processed_count = 0
+    
+    scan_job.current_file = "Scanne Verzeichnis..."
+    scan_job.save(update_fields=['current_file'])
+    
+    for tenant_folder in sage_path.iterdir():
+        if not tenant_folder.is_dir() or not tenant_folder_pattern.match(tenant_folder.name):
+            continue
+        
+        tenant_code = tenant_folder.name
+        known_hashes = known_hashes_by_tenant.get(tenant_code, set())
+        
+        for file_path in tenant_folder.rglob('*'):
+            if not file_path.is_file():
+                continue
+            if file_path.name.lower() in skip_files:
+                continue
+            if file_path.suffix.lower() not in supported_extensions:
+                continue
+            
+            try:
+                with open(file_path, 'rb') as f:
+                    content = f.read()
+                file_hash = calculate_sha256(content)
+                
+                if file_hash in known_hashes:
+                    already_processed_count += 1
+                else:
+                    new_files.append((file_path, tenant_code, file_hash, content))
+            except Exception as e:
+                logger.warning(f"Fehler beim Lesen von {file_path}: {e}")
+    
+    # Nur NEUE Dateien als total_files setzen
+    scan_job.total_files = len(new_files)
+    scan_job.skipped_files = already_processed_count
+    scan_job.save(update_fields=['total_files', 'skipped_files'])
+    
+    log_system_event('INFO', 'SageScanner', 
+        f"Gefunden: {len(new_files)} neue Dateien, {already_processed_count} bereits verarbeitet")
     
     processed_count = 0
-    skipped_count = 0
     error_count = 0
-    tenant_count = 0
     personnel_docs = 0
     company_docs = 0
     
+    # Mandanten-Cache für schnellen Zugriff
+    tenant_cache = {}
+    
     try:
-        for tenant_folder in sage_path.iterdir():
-            if not tenant_folder.is_dir():
-                continue
+        # Phase 3: Nur NEUE Dateien verarbeiten (bereits gehasht und gefiltert)
+        for file_path, tenant_code, file_hash, content in new_files:
+            # Mandant aus Cache oder DB holen
+            if tenant_code not in tenant_cache:
+                tenant, created = Tenant.objects.get_or_create(
+                    code=tenant_code,
+                    defaults={'name': f'Mandant {tenant_code}', 'is_active': True}
+                )
+                tenant_cache[tenant_code] = tenant
+                if created:
+                    log_system_event('INFO', 'SageScanner', f"Neuer Mandant erstellt: {tenant_code}")
             
-            if not tenant_folder_pattern.match(tenant_folder.name):
-                continue
+            tenant = tenant_cache[tenant_code]
             
-            tenant_code = tenant_folder.name
-            tenant, created = Tenant.objects.get_or_create(
-                code=tenant_code,
-                defaults={'name': f'Mandant {tenant_code}', 'is_active': True}
-            )
-            
-            if created:
-                log_system_event('INFO', 'SageScanner', f"Neuer Mandant erstellt: {tenant_code}")
-                tenant_count += 1
-            
-            for file_path in tenant_folder.rglob('*'):
-                if not file_path.is_file():
-                    continue
-                
-                if file_path.name.lower() in skip_files:
-                    continue
-                
-                if file_path.suffix.lower() not in supported_extensions:
-                    continue
-                
+            try:
+                # Monatsordner aus Pfad extrahieren
+                tenant_folder = sage_path / tenant_code
+                month_folder = None
                 try:
-                    with open(file_path, 'rb') as f:
-                        content = f.read()
-                    
-                    file_hash = calculate_sha256(content)
-                    
-                    if ProcessedFile.objects.filter(tenant=tenant, sha256_hash=file_hash).exists():
-                        skipped_count += 1
-                        scan_job.skipped_files = skipped_count
-                        scan_job.save(update_fields=['skipped_files'])
-                        continue
-                    
-                    month_folder = None
                     relative_path = file_path.relative_to(tenant_folder)
                     path_parts = relative_path.parts
                     if len(path_parts) >= 2 and month_folder_pattern.match(path_parts[0]):
                         month_folder = path_parts[0]
+                except ValueError:
+                    pass
+                
+                encrypted_content = encrypt_data(content)
+                mime_type = get_mime_type(str(file_path))
+                
+                employee = None
+                status = 'UNASSIGNED'
+                needs_review = False
+                dm_result = None
+                is_personnel = False
+                doc_type = 'UNBEKANNT'
+                category = None
+                description = 'Unbekanntes Dokument'
+                
+                if file_path.suffix.lower() == '.pdf':
+                    dm_result = extract_employee_from_datamatrix(str(file_path))
                     
-                    encrypted_content = encrypt_data(content)
-                    mime_type = get_mime_type(str(file_path))
-                    
-                    employee = None
-                    status = 'UNASSIGNED'
-                    needs_review = False
-                    dm_result = None
-                    is_personnel = False
-                    doc_type = 'UNBEKANNT'
-                    category = None
-                    description = 'Unbekanntes Dokument'
-                    
-                    if file_path.suffix.lower() == '.pdf':
-                        dm_result = extract_employee_from_datamatrix(str(file_path))
+                    if dm_result['success'] and dm_result['employee_ids']:
+                        is_personnel = True
+                        for emp_id in dm_result['employee_ids']:
+                            employee = find_employee_by_id(emp_id, tenant=tenant)
+                            if employee:
+                                status = 'ASSIGNED'
+                                break
                         
-                        if dm_result['success'] and dm_result['employee_ids']:
-                            is_personnel = True
-                            for emp_id in dm_result['employee_ids']:
-                                employee = find_employee_by_id(emp_id, tenant=tenant)
-                                if employee:
-                                    status = 'ASSIGNED'
-                                    break
-                            
-                            if not employee:
-                                needs_review = True
-                                status = 'REVIEW_NEEDED'
-                            
-                            doc_type, _, category, description = classify_sage_document(file_path.name)
-                        elif dm_result['success'] and dm_result['codes']:
-                            is_personnel = True
+                        if not employee:
                             needs_review = True
                             status = 'REVIEW_NEEDED'
-                            doc_type, _, category, description = classify_sage_document(file_path.name)
-                        else:
-                            doc_type, is_personnel, category, description = classify_sage_document(file_path.name)
-                            if is_personnel:
-                                needs_review = True
-                                status = 'REVIEW_NEEDED'
-                            else:
-                                status = 'COMPANY'
+                        
+                        doc_type, _, category, description = classify_sage_document(file_path.name)
+                    elif dm_result['success'] and dm_result['codes']:
+                        is_personnel = True
+                        needs_review = True
+                        status = 'REVIEW_NEEDED'
+                        doc_type, _, category, description = classify_sage_document(file_path.name)
                     else:
                         doc_type, is_personnel, category, description = classify_sage_document(file_path.name)
-                        status = 'COMPANY' if not is_personnel else 'UNASSIGNED'
-                    
-                    metadata = {
-                        'original_path': str(file_path),
-                        'needs_review': needs_review,
-                        'tenant_code': tenant_code,
-                        'doc_type': doc_type,
-                        'doc_type_description': description,
-                        'is_personnel_document': is_personnel,
-                        'category_code': category,
-                        'month_folder': month_folder,
+                        if is_personnel:
+                            needs_review = True
+                            status = 'REVIEW_NEEDED'
+                        else:
+                            status = 'COMPANY'
+                else:
+                    doc_type, is_personnel, category, description = classify_sage_document(file_path.name)
+                    status = 'COMPANY' if not is_personnel else 'UNASSIGNED'
+                
+                metadata = {
+                    'original_path': str(file_path),
+                    'needs_review': needs_review,
+                    'tenant_code': tenant_code,
+                    'doc_type': doc_type,
+                    'doc_type_description': description,
+                    'is_personnel_document': is_personnel,
+                    'category_code': category,
+                    'month_folder': month_folder,
+                }
+                
+                if dm_result:
+                    metadata['datamatrix'] = {
+                        'success': dm_result['success'],
+                        'codes_found': len(dm_result['codes']),
+                        'employee_ids': dm_result['employee_ids'],
                     }
-                    
-                    if dm_result:
-                        metadata['datamatrix'] = {
-                            'success': dm_result['success'],
-                            'codes_found': len(dm_result['codes']),
-                            'employee_ids': dm_result['employee_ids'],
-                        }
-                    
-                    document = Document.objects.create(
-                        tenant=tenant,
-                        title=file_path.stem,
-                        original_filename=file_path.name,
-                        file_extension=file_path.suffix,
-                        mime_type=mime_type,
-                        encrypted_content=encrypted_content,
-                        file_size=len(content),
-                        employee=employee,
-                        status=status,
-                        source='SAGE',
-                        sha256_hash=file_hash,
-                        metadata=metadata
-                    )
-                    
-                    ProcessedFile.objects.create(
-                        tenant=tenant,
-                        sha256_hash=file_hash,
-                        original_path=str(file_path),
-                        document=document
-                    )
-                    
-                    processed_count += 1
-                    if is_personnel:
-                        personnel_docs += 1
-                    else:
-                        company_docs += 1
-                    
-                    scan_job.processed_files = processed_count
-                    scan_job.current_file = file_path.name[:255]
-                    scan_job.save(update_fields=['processed_files', 'current_file'])
-                    
-                    if needs_review:
-                        log_system_event('WARNING', 'SageScanner', 
-                            f"File requires review (DataMatrix issue): {file_path.name}",
-                            {'document_id': str(document.id), 'tenant': tenant_code})
-                    
-                except Exception as e:
-                    error_count += 1
-                    scan_job.error_files = error_count
-                    scan_job.save(update_fields=['error_files'])
-                    log_system_event('ERROR', 'SageScanner', 
-                        f"Failed to process file: {file_path.name}",
-                        {'error': str(e), 'tenant': tenant_code})
+                
+                document = Document.objects.create(
+                    tenant=tenant,
+                    title=file_path.stem,
+                    original_filename=file_path.name,
+                    file_extension=file_path.suffix,
+                    mime_type=mime_type,
+                    encrypted_content=encrypted_content,
+                    file_size=len(content),
+                    employee=employee,
+                    status=status,
+                    source='SAGE',
+                    sha256_hash=file_hash,
+                    metadata=metadata
+                )
+                
+                ProcessedFile.objects.create(
+                    tenant=tenant,
+                    sha256_hash=file_hash,
+                    original_path=str(file_path),
+                    document=document
+                )
+                
+                processed_count += 1
+                if is_personnel:
+                    personnel_docs += 1
+                else:
+                    company_docs += 1
+                
+                scan_job.processed_files = processed_count
+                scan_job.save(update_fields=['processed_files'])
+                
+                if needs_review:
+                    log_system_event('WARNING', 'SageScanner', 
+                        f"File requires review (DataMatrix issue): {file_path.name}",
+                        {'document_id': str(document.id), 'tenant': tenant_code})
+                
+            except Exception as e:
+                error_count += 1
+                scan_job.error_files = error_count
+                scan_job.save(update_fields=['error_files'])
+                log_system_event('ERROR', 'SageScanner', 
+                    f"Failed to process file: {file_path.name}",
+                    {'error': str(e), 'tenant': tenant_code})
         
         scan_job.status = 'COMPLETED'
         scan_job.completed_at = timezone.now()
         scan_job.processed_files = processed_count
-        scan_job.skipped_files = skipped_count
         scan_job.error_files = error_count
         scan_job.current_file = ''
         scan_job.save()
         
         log_system_event('INFO', 'SageScanner', 
-            f"Scan abgeschlossen: {processed_count} verarbeitet ({personnel_docs} Personal, {company_docs} Firma), "
-            f"{skipped_count} übersprungen, {error_count} Fehler, {tenant_count} neue Mandanten")
+            f"Scan abgeschlossen: {processed_count} neu verarbeitet, "
+            f"{already_processed_count} bereits vorhanden, {error_count} Fehler")
         
         return {
             'status': 'success',
             'processed': processed_count,
             'personnel_documents': personnel_docs,
             'company_documents': company_docs,
-            'skipped': skipped_count,
-            'errors': error_count,
-            'new_tenants': tenant_count
+            'already_processed': already_processed_count,
+            'errors': error_count
         }
         
     except Exception as e:
