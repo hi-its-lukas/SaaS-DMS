@@ -336,6 +336,28 @@ def document_download(request, pk):
 
 
 @login_required
+def document_view(request, pk):
+    document = get_object_or_404(Document, pk=pk)
+    
+    if not _can_access_document(request.user, document):
+        return HttpResponse('Permission denied', status=403)
+    
+    try:
+        decrypted_content = decrypt_data(document.encrypted_content)
+        
+        _log_audit(request, 'VIEW', document=document)
+        
+        response = HttpResponse(
+            decrypted_content,
+            content_type=document.mime_type or 'application/octet-stream'
+        )
+        response['Content-Disposition'] = f'inline; filename="{document.original_filename}"'
+        return response
+    except Exception as e:
+        return HttpResponse('Error viewing file', status=500)
+
+
+@login_required
 def task_list(request):
     if request.user.has_perm('dms.manage_documents'):
         tasks = Task.objects.all()

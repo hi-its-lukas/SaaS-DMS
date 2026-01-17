@@ -10,6 +10,9 @@
             <p style="color: #666;">{{ document.original_filename }}</p>
         </div>
         <div>
+            {% if document.mime_type == 'application/pdf' or document.mime_type|slice:":6" == 'image/' %}
+            <a href="{% url 'dms:document_view' document.pk %}" class="btn btn-primary" target="_blank">Ansehen</a>
+            {% endif %}
             <a href="{% url 'dms:document_download' document.pk %}" class="btn btn-success">Herunterladen</a>
             <a href="{% url 'dms:document_list' %}" class="btn">Zurück zur Liste</a>
         </div>
