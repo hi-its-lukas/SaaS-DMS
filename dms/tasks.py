@@ -424,8 +424,11 @@ def split_pdf_by_datamatrix(file_path, output_dir, timeout_per_page=5):
         
         log_system_event('INFO', 'PDFSplitter', f"Scanne {total_pages} Seiten für DataMatrix-Codes: {Path(file_path).name}")
         
+        mandant_code_found = None
+        
         for page_num in range(total_pages):
             page_emp_id = None
+            page_mandant = None
             
             try:
                 page = doc[page_num]
@@ -441,6 +444,9 @@ def split_pdf_by_datamatrix(file_path, output_dir, timeout_per_page=5):
                         emp_id = parse_employee_id_from_datamatrix(raw_data)
                         if emp_id:
                             page_emp_id = emp_id
+                            metadata = parse_datamatrix_metadata(raw_data)
+                            if metadata.get('tenant_code') and not mandant_code_found:
+                                mandant_code_found = metadata['tenant_code']
                             break
                     except:
                         continue
@@ -507,7 +513,8 @@ def split_pdf_by_datamatrix(file_path, output_dir, timeout_per_page=5):
                     'employee_id': emp_id if emp_id != 'UNBEKANNT' else None,
                     'pages': pages,
                     'page_count': len(pages),
-                    'original_file': str(file_path)
+                    'original_file': str(file_path),
+                    'mandant_code': mandant_code_found
                 })
                 
                 log_system_event('INFO', 'PDFSplitter', 
@@ -553,6 +560,10 @@ def find_employee_by_id(employee_id, tenant=None, mandant_code=None):
     Sucht einen Mitarbeiter anhand der ID.
     Versucht verschiedene ID-Formate inkl. Sage-Format (Mandant_PersonalNr).
     
+    Fallback-Strategie:
+    1. Mit Tenant-Filter suchen
+    2. Bei tenant=None-Mitarbeitern auch ohne Filter suchen (Legacy-Daten)
+    
     Args:
         employee_id: Personalnummer (z.B. "1", "9")
         tenant: Tenant-Objekt für Filterung
@@ -561,39 +572,56 @@ def find_employee_by_id(employee_id, tenant=None, mandant_code=None):
     if not employee_id:
         return None
     
-    try:
-        queryset = Employee.objects.all()
-        if tenant:
-            queryset = queryset.filter(tenant=tenant)
-        
-        employee = queryset.filter(employee_id=employee_id).first()
+    def search_in_queryset(qs, emp_id, mandant_code_local, tenant_local):
+        """Hilfsfunktion für die Suche in einem Queryset"""
+        employee = qs.filter(employee_id=emp_id).first()
         if employee:
             return employee
         
-        if mandant_code:
-            sage_id = f"{mandant_code}_{employee_id}"
-            employee = queryset.filter(employee_id=sage_id).first()
+        if mandant_code_local:
+            sage_id = f"{mandant_code_local}_{emp_id}"
+            employee = qs.filter(employee_id=sage_id).first()
             if employee:
                 return employee
         
-        if tenant and tenant.code:
-            mandant_num = tenant.code.lstrip('0') or '1'
-            sage_id = f"{mandant_num}_{employee_id}"
-            employee = queryset.filter(employee_id=sage_id).first()
+        if tenant_local and tenant_local.code:
+            mandant_num = tenant_local.code.lstrip('0') or '1'
+            sage_id = f"{mandant_num}_{emp_id}"
+            employee = qs.filter(employee_id=sage_id).first()
             if employee:
                 return employee
         
-        for prefix in ['1', '2', '3']:
-            sage_id = f"{prefix}_{employee_id}"
-            employee = queryset.filter(employee_id=sage_id).first()
+        for prefix in ['1', '2', '3', '4', '5']:
+            sage_id = f"{prefix}_{emp_id}"
+            employee = qs.filter(employee_id=sage_id).first()
             if employee:
                 return employee
         
-        if employee_id.isdigit():
-            employee = queryset.filter(employee_id=employee_id.lstrip('0')).first()
+        if emp_id.isdigit():
+            employee = qs.filter(employee_id=emp_id.lstrip('0')).first()
             if employee:
                 return employee
-            employee = queryset.filter(employee_id=employee_id.zfill(8)).first()
+            employee = qs.filter(employee_id=emp_id.zfill(8)).first()
+            if employee:
+                return employee
+        
+        return None
+    
+    try:
+        if tenant:
+            queryset = Employee.objects.filter(tenant=tenant)
+            employee = search_in_queryset(queryset, employee_id, mandant_code, tenant)
+            if employee:
+                return employee
+        
+        queryset_null = Employee.objects.filter(tenant__isnull=True)
+        employee = search_in_queryset(queryset_null, employee_id, mandant_code, tenant)
+        if employee:
+            return employee
+        
+        if tenant:
+            queryset_all = Employee.objects.all()
+            employee = search_in_queryset(queryset_all, employee_id, mandant_code, tenant)
             if employee:
                 return employee
         
@@ -991,6 +1019,7 @@ def _run_sage_scan(task_self):
                             for split_info in split_results:
                                 split_path = Path(split_info['file_path'])
                                 emp_id = split_info['employee_id']
+                                mandant_code_dm = split_info.get('mandant_code')
                                 
                                 with open(split_path, 'rb') as sf:
                                     split_content = sf.read()
@@ -998,7 +1027,7 @@ def _run_sage_scan(task_self):
                                 split_hash = calculate_sha256_chunked(str(split_path))
                                 split_size = len(split_content)
                                 
-                                split_employee = find_employee_by_id(emp_id, tenant=tenant)
+                                split_employee = find_employee_by_id(emp_id, tenant=tenant, mandant_code=mandant_code_dm)
                                 split_status = 'ASSIGNED' if split_employee else 'REVIEW_NEEDED'
                                 
                                 doc_type_split, _, category_split, desc_split = classify_sage_document(file_path.name)
