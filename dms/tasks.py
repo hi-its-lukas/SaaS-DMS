@@ -175,6 +175,8 @@ def extract_employee_from_datamatrix(file_path, max_pages=1, timeout_seconds=10)
             'error': str or None - Error message if failed
             'codes': list - List of extracted code data
             'employee_ids': list - Parsed employee IDs from codes
+            'mandant_code': str or None - Mandant code from Sage format (MD1 -> "1")
+            'metadata': dict - All parsed metadata from DataMatrix
     """
     import signal
     
@@ -182,7 +184,9 @@ def extract_employee_from_datamatrix(file_path, max_pages=1, timeout_seconds=10)
         'success': False,
         'error': None,
         'codes': [],
-        'employee_ids': []
+        'employee_ids': [],
+        'mandant_code': None,
+        'metadata': {}
     }
     
     def timeout_handler(signum, frame):
@@ -215,6 +219,12 @@ def extract_employee_from_datamatrix(file_path, max_pages=1, timeout_seconds=10)
                     emp_id = parse_employee_id_from_datamatrix(raw_data)
                     if emp_id and emp_id not in result['employee_ids']:
                         result['employee_ids'].append(emp_id)
+                    
+                    metadata = parse_datamatrix_metadata(raw_data)
+                    if metadata:
+                        result['metadata'] = metadata
+                        if 'tenant_code' in metadata and not result['mandant_code']:
+                            result['mandant_code'] = metadata['tenant_code']
                 
                 if result['employee_ids']:
                     break
@@ -495,10 +505,15 @@ def parse_month_folder_to_date(month_folder):
     return None
 
 
-def find_employee_by_id(employee_id, tenant=None):
+def find_employee_by_id(employee_id, tenant=None, mandant_code=None):
     """
     Sucht einen Mitarbeiter anhand der ID.
-    Versucht verschiedene ID-Formate.
+    Versucht verschiedene ID-Formate inkl. Sage-Format (Mandant_PersonalNr).
+    
+    Args:
+        employee_id: Personalnummer (z.B. "1", "9")
+        tenant: Tenant-Objekt für Filterung
+        mandant_code: Mandant-Code aus DataMatrix (z.B. "1") 
     """
     if not employee_id:
         return None
@@ -511,6 +526,25 @@ def find_employee_by_id(employee_id, tenant=None):
         employee = queryset.filter(employee_id=employee_id).first()
         if employee:
             return employee
+        
+        if mandant_code:
+            sage_id = f"{mandant_code}_{employee_id}"
+            employee = queryset.filter(employee_id=sage_id).first()
+            if employee:
+                return employee
+        
+        if tenant and tenant.code:
+            mandant_num = tenant.code.lstrip('0') or '1'
+            sage_id = f"{mandant_num}_{employee_id}"
+            employee = queryset.filter(employee_id=sage_id).first()
+            if employee:
+                return employee
+        
+        for prefix in ['1', '2', '3']:
+            sage_id = f"{prefix}_{employee_id}"
+            employee = queryset.filter(employee_id=sage_id).first()
+            if employee:
+                return employee
         
         if employee_id.isdigit():
             employee = queryset.filter(employee_id=employee_id.lstrip('0')).first()
@@ -984,11 +1018,12 @@ def _run_sage_scan(task_self):
                                     'filename': file_path.name, 'doc_ids': split_docs_created, 'tenant': tenant_code}
                 
                 dm_result = extract_employee_from_datamatrix(str(file_path))
+                dm_mandant_code = dm_result.get('mandant_code')
                 
                 if dm_result['success'] and dm_result['employee_ids']:
                     is_personnel = True
                     for emp_id in dm_result['employee_ids']:
-                        employee = find_employee_by_id(emp_id, tenant=tenant)
+                        employee = find_employee_by_id(emp_id, tenant=tenant, mandant_code=dm_mandant_code)
                         if employee:
                             status = 'ASSIGNED'
                             break
