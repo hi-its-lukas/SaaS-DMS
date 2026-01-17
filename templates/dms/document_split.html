@@ -28,7 +28,7 @@
     
     .split-layout {
         display: grid;
-        grid-template-columns: 1fr 400px;
+        grid-template-columns: 1fr 500px;
         gap: 24px;
     }
     
@@ -176,6 +176,62 @@
         background: var(--primary-light);
     }
     
+    /* Lightbox für Vollbild-Vorschau */
+    .lightbox {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 10000;
+        justify-content: center;
+        align-items: center;
+        cursor: zoom-out;
+    }
+    
+    .lightbox.active {
+        display: flex;
+    }
+    
+    .lightbox img {
+        max-width: 90%;
+        max-height: 90%;
+        object-fit: contain;
+        border-radius: 4px;
+    }
+    
+    .lightbox-close {
+        position: absolute;
+        top: 20px;
+        right: 30px;
+        color: white;
+        font-size: 32px;
+        cursor: pointer;
+    }
+    
+    .lightbox-nav {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        color: white;
+        font-size: 48px;
+        cursor: pointer;
+        padding: 20px;
+        user-select: none;
+    }
+    
+    .lightbox-prev { left: 20px; }
+    .lightbox-next { right: 20px; }
+    
+    .lightbox-page {
+        position: absolute;
+        bottom: 20px;
+        color: white;
+        font-size: 16px;
+    }
+    
     .page-thumb-number {
         position: absolute;
         top: 4px;
@@ -306,7 +362,9 @@
                         <img class="page-thumb-img" 
                              src="{% url 'dms:document_page_thumbnail' document.pk page_num %}" 
                              alt="Seite {{ page_num }}"
-                             loading="lazy">
+                             loading="lazy"
+                             onclick="openLightbox({{ page_num }})"
+                             style="cursor: zoom-in;">
                         <div class="page-thumb-label">Seite {{ page_num }}</div>
                     </div>
                     {% endfor %}
@@ -314,6 +372,15 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- Lightbox für Vollbild-Vorschau -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+    <span class="lightbox-close material-icons">close</span>
+    <span class="lightbox-nav lightbox-prev material-icons" onclick="event.stopPropagation(); navigateLightbox(-1)">chevron_left</span>
+    <img id="lightbox-img" src="" alt="Seitenvorschau">
+    <span class="lightbox-nav lightbox-next material-icons" onclick="event.stopPropagation(); navigateLightbox(1)">chevron_right</span>
+    <span class="lightbox-page" id="lightbox-page"></span>
 </div>
 
 <script>
@@ -422,9 +489,45 @@ document.getElementById('addSplit').addEventListener('click', addSplit);
 
 addSplit();
 
-document.querySelectorAll('.page-thumb').forEach(thumb => {
-    thumb.addEventListener('click', function() {
-        const pageNum = parseInt(this.dataset.page);
+// Lightbox-Funktionen
+const documentId = '{{ document.pk }}';
+let currentLightboxPage = 1;
+
+function openLightbox(pageNum) {
+    event.stopPropagation();
+    currentLightboxPage = pageNum;
+    const img = document.getElementById('lightbox-img');
+    img.src = `/documents/${documentId}/page/${pageNum}/thumbnail/`;
+    document.getElementById('lightbox-page').textContent = `Seite ${pageNum} von ${pageCount}`;
+    document.getElementById('lightbox').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+function navigateLightbox(direction) {
+    let newPage = currentLightboxPage + direction;
+    if (newPage < 1) newPage = pageCount;
+    if (newPage > pageCount) newPage = 1;
+    openLightbox(newPage);
+}
+
+// ESC zum Schließen
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') navigateLightbox(-1);
+    if (e.key === 'ArrowRight') navigateLightbox(1);
+});
+
+// Page-thumb Klick für Bereichsauswahl (auf das div, nicht das Bild)
+document.querySelectorAll('.page-thumb-label').forEach(label => {
+    label.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const thumb = this.closest('.page-thumb');
+        const pageNum = parseInt(thumb.dataset.page);
         if (splits.length === 0) {
             addSplit();
         }

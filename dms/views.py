@@ -396,7 +396,8 @@ def document_page_thumbnail(request, pk, page_num):
             return HttpResponse('Page not found', status=404)
         
         page = pdf_doc[page_idx]
-        pix = page.get_pixmap(matrix=fitz.Matrix(0.5, 0.5))
+        # Höhere Auflösung für bessere Lesbarkeit
+        pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
         img_data = pix.tobytes("png")
         
         pdf_doc.close()
