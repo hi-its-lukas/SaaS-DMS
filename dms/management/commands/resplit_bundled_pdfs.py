@@ -230,11 +230,11 @@ class Command(BaseCommand):
         
         def do_scan():
             page = pdf_doc[page_num]
-            pix = page.get_pixmap(matrix=fitz.Matrix(1.0, 1.0))
+            pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
             img_data = pix.tobytes("png")
             img = Image.open(io.BytesIO(img_data))
             
-            decoded = decode(img, timeout=timeout_seconds * 1000)
+            decoded = decode(img, timeout=timeout_seconds * 1000, max_count=1)
             
             for d in decoded:
                 raw_data = d.data.decode('utf-8')
