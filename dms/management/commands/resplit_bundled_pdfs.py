@@ -39,14 +39,23 @@ class Command(BaseCommand):
             type=str,
             help='Nur ein bestimmtes Dokument verarbeiten (UUID)',
         )
+        parser.add_argument(
+            '--one-page-per-doc',
+            action='store_true',
+            help='Jede Seite als eigenes Dokument (kein Grouping)',
+        )
 
     def handle(self, *args, **options):
         dry_run = options.get('dry_run', False)
         timeout = options.get('timeout', 8)
         doc_id = options.get('doc_id')
+        one_page_per_doc = options.get('one_page_per_doc', False)
         
         if dry_run:
             self.stdout.write(self.style.WARNING('=== DRY RUN ===\n'))
+        
+        if one_page_per_doc:
+            self.stdout.write(self.style.WARNING('Modus: Eine Seite = Ein Dokument\n'))
         
         if doc_id:
             docs = Document.objects.filter(id=doc_id)
@@ -64,7 +73,7 @@ class Command(BaseCommand):
         skipped = 0
         
         for doc in docs:
-            result = self._process_document(doc, timeout, dry_run)
+            result = self._process_document(doc, timeout, dry_run, one_page_per_doc)
             if result > 0:
                 split_count += result
             else:
@@ -77,12 +86,9 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING('\n=== DRY RUN - Keine Änderungen gespeichert ==='))
     
-    def _process_document(self, doc, timeout_per_page, dry_run):
+    def _process_document(self, doc, timeout_per_page, dry_run, one_page_per_doc=False):
         """Verarbeitet ein Dokument und teilt es auf wenn nötig"""
         import fitz
-        from pylibdmtx.pylibdmtx import decode
-        from PIL import Image
-        import io
         
         self.stdout.write(f"\nVerarbeite: {doc.original_filename}")
         
@@ -97,6 +103,9 @@ class Command(BaseCommand):
                 pdf_doc.close()
                 self.stdout.write("  -> Übersprungen (nur 1 Seite)")
                 return 0
+            
+            if one_page_per_doc:
+                return self._process_one_page_per_doc(doc, pdf_doc, pdf_bytes, timeout_per_page, dry_run)
             
             segments = []
             current_segment = {'employee_id': None, 'mandant_code': None, 'pages': []}
@@ -256,3 +265,90 @@ class Command(BaseCommand):
             raise TimeoutError("Scan timeout")
         except Exception as e:
             raise e
+    
+    def _process_one_page_per_doc(self, doc, pdf_doc, pdf_bytes, timeout_per_page, dry_run):
+        """Jede Seite wird ein eigenes Dokument - scannt DataMatrix für MA-Zuweisung"""
+        import fitz
+        
+        page_count = len(pdf_doc)
+        created_count = 0
+        base_name = Path(doc.original_filename).stem
+        
+        for page_num in range(page_count):
+            emp_id = None
+            mandant_code = None
+            
+            try:
+                result = self._scan_page_with_timeout(pdf_doc, page_num, timeout_per_page)
+                if result:
+                    emp_id = result['employee_id']
+                    mandant_code = result.get('mandant_code')
+                    self.stdout.write(f"    Seite {page_num + 1}: MA={emp_id}, MD={mandant_code}")
+                else:
+                    self.stdout.write(f"    Seite {page_num + 1}: kein DataMatrix")
+            except TimeoutError:
+                self.stdout.write(f"    Seite {page_num + 1}: Timeout")
+            except Exception as e:
+                self.stdout.write(f"    Seite {page_num + 1}: Fehler: {str(e)}")
+            
+            if dry_run:
+                created_count += 1
+                continue
+            
+            new_pdf = fitz.open()
+            new_pdf.insert_pdf(pdf_doc, from_page=page_num, to_page=page_num)
+            pdf_content = new_pdf.tobytes()
+            new_pdf.close()
+            
+            encrypted_content = encrypt_data(pdf_content)
+            file_hash = hashlib.sha256(pdf_content).hexdigest()
+            
+            employee = None
+            if emp_id:
+                employee = find_employee_by_id(emp_id, tenant=doc.tenant, mandant_code=mandant_code)
+            
+            status = 'ASSIGNED' if employee else 'REVIEW_NEEDED'
+            suffix = f"_MA{emp_id}" if emp_id else f"_S{page_num + 1}"
+            new_filename = f"{base_name}{suffix}.pdf"
+            
+            doc_type, _, category, description = classify_sage_document(doc.original_filename)
+            
+            new_metadata = dict(doc.metadata) if doc.metadata else {}
+            if emp_id:
+                new_metadata['employee_id_from_datamatrix'] = emp_id
+            if mandant_code:
+                new_metadata['mandant_code'] = mandant_code
+            new_metadata['split_from'] = str(doc.id)
+            new_metadata['page_number'] = page_num + 1
+            
+            new_doc = Document.objects.create(
+                tenant=doc.tenant,
+                title=Path(new_filename).stem,
+                original_filename=new_filename,
+                file_extension='.pdf',
+                mime_type='application/pdf',
+                encrypted_content=encrypted_content,
+                file_size=len(pdf_content),
+                employee=employee,
+                status=status,
+                source=doc.source,
+                sha256_hash=file_hash,
+                metadata=new_metadata,
+                period_year=doc.period_year,
+                period_month=doc.period_month
+            )
+            
+            auto_classify_document(new_doc, tenant=doc.tenant)
+            created_count += 1
+            
+            emp_name = f"{employee.first_name} {employee.last_name}" if employee else "REVIEW"
+            self.stdout.write(f"    -> Erstellt: {new_filename} -> {emp_name}")
+        
+        if not dry_run:
+            pdf_doc.close()
+            doc.status = 'ARCHIVED'
+            doc.notes = f"Aufgeteilt in {created_count} Einzeldokumente (1 pro Seite)"
+            doc.save(update_fields=['status', 'notes'])
+        
+        self.stdout.write(f"  Gesamt: {created_count} Dokumente")
+        return created_count
