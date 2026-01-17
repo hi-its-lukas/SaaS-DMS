@@ -110,19 +110,60 @@ def get_redis_client():
 
 
 @contextmanager
-def distributed_lock(lock_name, timeout=3600):
+def distributed_lock(lock_name, timeout=1800):
     """
     Redis-basierter verteilter Lock mit SETNX (atomar).
     Verhindert, dass zwei Celery-Worker gleichzeitig denselben Job starten.
+    
+    Features:
+    - Standardmäßig 30 Minuten TTL (statt 1 Stunde)
+    - Automatische Erkennung und Bereinigung von verwaisten Locks
+    - Metadaten für bessere Diagnose
     """
     import uuid
+    import time
+    import socket
+    
     client = get_redis_client()
     lock_key = f"dms:lock:{lock_name}"
+    meta_key = f"dms:lock:{lock_name}:meta"
     lock_value = str(uuid.uuid4())
+    acquired = False
     
     try:
+        # Prüfe ob ein alter Lock existiert und zu alt ist (stale lock detection)
+        try:
+            existing_meta = client.hgetall(meta_key)
+            if existing_meta:
+                start_time_raw = existing_meta.get(b'start_time') or existing_meta.get('start_time')
+                if start_time_raw:
+                    start_time = float(start_time_raw)
+                    max_age = timeout * 1.5  # 50% Puffer über TTL
+                    lock_age = time.time() - start_time
+                    
+                    if lock_age > max_age:
+                        logger.warning(f"[Lock] {lock_name}: Stale lock detected (age={lock_age:.0f}s > max={max_age:.0f}s), auto-clearing")
+                        client.delete(lock_key)
+                        client.delete(meta_key)
+        except Exception as e:
+            logger.warning(f"[Lock] Stale check failed: {e}")
+        
         # SETNX ist atomar - nur EIN Client kann erfolgreich setzen
         acquired = client.set(lock_key, lock_value, nx=True, ex=timeout)
+        
+        if acquired:
+            # Speichere Metadaten für Diagnose
+            try:
+                client.hset(meta_key, mapping={
+                    'start_time': str(time.time()),
+                    'hostname': socket.gethostname(),
+                    'lock_value': lock_value,
+                    'timeout': str(timeout)
+                })
+                client.expire(meta_key, timeout + 60)
+            except Exception as e:
+                logger.warning(f"[Lock] Failed to set metadata: {e}")
+        
         logger.info(f"[Lock] {lock_name}: acquired={acquired}, key={lock_key}")
         
         yield bool(acquired)
@@ -135,13 +176,14 @@ def distributed_lock(lock_name, timeout=3600):
             # Nur löschen wenn wir den Lock besitzen (Lua-Script für Atomarität)
             lua_script = """
             if redis.call("get", KEYS[1]) == ARGV[1] then
+                redis.call("del", KEYS[2])
                 return redis.call("del", KEYS[1])
             else
                 return 0
             end
             """
             try:
-                client.eval(lua_script, 1, lock_key, lock_value)
+                client.eval(lua_script, 2, lock_key, meta_key, lock_value)
                 logger.info(f"[Lock] {lock_name}: released")
             except Exception as e:
                 logger.warning(f"[Lock] Failed to release {lock_name}: {e}")
@@ -764,7 +806,7 @@ def scan_sage_archive(self):
     Personalunterlagen (Lohnscheine, etc.) werden via DataMatrix-Code getrennt.
     Firmendokumente (Beitragsnachweis, etc.) werden nach Dateiname klassifiziert.
     """
-    with distributed_lock('sage_scanner', timeout=7200) as acquired:
+    with distributed_lock('sage_scanner', timeout=1800) as acquired:
         if not acquired:
             log_system_event('INFO', 'SageScanner', "Scan übersprungen - Redis-Lock aktiv")
             return {'status': 'skipped', 'message': 'Another scan is already running (Redis lock)'}
