@@ -20,6 +20,7 @@ CSRF_TRUSTED_ORIGINS = _csrf_origins
 X_FRAME_OPTIONS = 'SAMEORIGIN'
 
 INSTALLED_APPS = [
+    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -29,6 +30,84 @@ INSTALLED_APPS = [
     'django_celery_beat',
     'dms',
 ]
+
+JAZZMIN_SETTINGS = {
+    "site_title": "DMS Admin",
+    "site_header": "Dokumentenmanagementsystem",
+    "site_brand": "DMS",
+    "site_logo": None,
+    "login_logo": None,
+    "welcome_sign": "Willkommen im DMS",
+    "copyright": "Hengl Bedachungen",
+    "search_model": ["dms.Document", "dms.Employee"],
+    "user_avatar": None,
+    "topmenu_links": [
+        {"name": "Dashboard", "url": "/", "permissions": ["auth.view_user"]},
+        {"name": "Dokumente", "url": "/documents/", "permissions": ["auth.view_user"]},
+        {"app": "dms"},
+    ],
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    "hide_apps": [],
+    "hide_models": [],
+    "order_with_respect_to": ["auth", "dms"],
+    "icons": {
+        "auth": "fas fa-users-cog",
+        "auth.user": "fas fa-user",
+        "auth.Group": "fas fa-users",
+        "dms.Document": "fas fa-file-alt",
+        "dms.Employee": "fas fa-user-tie",
+        "dms.Department": "fas fa-building",
+        "dms.DocumentType": "fas fa-tags",
+        "dms.PersonnelFile": "fas fa-folder-open",
+        "dms.Tenant": "fas fa-sitemap",
+        "dms.Tag": "fas fa-tag",
+        "dms.MatchingRule": "fas fa-magic",
+        "dms.ScanJob": "fas fa-sync",
+        "dms.SystemSettings": "fas fa-cogs",
+        "dms.SystemLog": "fas fa-list-alt",
+    },
+    "default_icon_parents": "fas fa-chevron-circle-right",
+    "default_icon_children": "fas fa-circle",
+    "related_modal_active": True,
+    "use_google_fonts_cdn": True,
+    "show_ui_builder": False,
+    "changeform_format": "horizontal_tabs",
+    "changeform_format_overrides": {"auth.user": "collapsible", "auth.group": "vertical_tabs"},
+    "language_chooser": False,
+}
+
+JAZZMIN_UI_TWEAKS = {
+    "navbar_small_text": False,
+    "footer_small_text": False,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "brand_colour": "navbar-primary",
+    "accent": "accent-primary",
+    "navbar": "navbar-white navbar-light",
+    "no_navbar_border": False,
+    "navbar_fixed": True,
+    "layout_boxed": False,
+    "footer_fixed": False,
+    "sidebar_fixed": True,
+    "sidebar": "sidebar-dark-primary",
+    "sidebar_nav_small_text": False,
+    "sidebar_disable_expand": False,
+    "sidebar_nav_child_indent": False,
+    "sidebar_nav_compact_style": False,
+    "sidebar_nav_legacy_style": False,
+    "sidebar_nav_flat_style": False,
+    "theme": "default",
+    "dark_mode_theme": None,
+    "button_classes": {
+        "primary": "btn-primary",
+        "secondary": "btn-secondary",
+        "info": "btn-info",
+        "warning": "btn-warning",
+        "danger": "btn-danger",
+        "success": "btn-success"
+    }
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

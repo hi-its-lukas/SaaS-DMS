@@ -22,3 +22,4 @@ zeep
 python-dateutil
 pdf2image
 pytesseract
+django-jazzmin

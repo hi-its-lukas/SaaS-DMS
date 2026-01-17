@@ -43,12 +43,22 @@
             </div>
         </div>
         <div class="widget-body">
-            <a href="{% url 'dms:upload_page' %}" class="upload-zone">
-                <span class="material-icons">cloud_upload</span>
-                <div class="upload-zone-text">
+            <form id="dashboard-upload-form" action="{% url 'dms:upload_file' %}" method="post" enctype="multipart/form-data" style="display: none;">
+                {% csrf_token %}
+                <input type="file" id="dashboard-file-input" name="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.tif,.tiff">
+            </form>
+            <div id="upload-zone" class="upload-zone" onclick="document.getElementById('dashboard-file-input').click();">
+                <span class="material-icons" id="upload-icon">cloud_upload</span>
+                <div class="upload-zone-text" id="upload-text">
                     Drag & Drop. <span class="upload-zone-link">Alternativ hier klicken zum Hochladen.</span>
                 </div>
-            </a>
+                <div id="upload-progress" style="display: none; width: 100%;">
+                    <div class="progress-bar-container" style="background: var(--bg-hover); border-radius: 4px; height: 8px; margin-top: 8px;">
+                        <div id="upload-progress-bar" style="background: var(--success); height: 100%; border-radius: 4px; width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                    <div id="upload-status" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;"></div>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -138,6 +148,22 @@
             </div>
         </div>
         <div class="widget-body compact">
+            {% if active_scans %}
+            <div class="scan-status-active" style="background: var(--info-bg); border: 1px solid var(--info); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 12px;">
+                {% for scan in active_scans %}
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <span class="material-icons" style="color: var(--info); animation: spin 1s linear infinite;">sync</span>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 500; color: var(--info);">{{ scan.get_source_display }} läuft...</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">{{ scan.processed_files }} / {{ scan.total_files }} Dateien ({{ scan.progress_percent }}%)</div>
+                    </div>
+                </div>
+                <div style="background: var(--border); border-radius: 4px; height: 6px; overflow: hidden;">
+                    <div style="background: var(--info); height: 100%; width: {{ scan.progress_percent }}%; transition: width 0.5s;"></div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
             <a href="{% url 'dms:sage_sync_dashboard' %}" class="menu-link">
                 <span class="material-icons">sync</span>
                 <div class="menu-link-content">
@@ -360,4 +386,129 @@
         <p>Personalakten</p>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadZone = document.getElementById('upload-zone');
+    const fileInput = document.getElementById('dashboard-file-input');
+    const uploadProgress = document.getElementById('upload-progress');
+    const uploadProgressBar = document.getElementById('upload-progress-bar');
+    const uploadStatus = document.getElementById('upload-status');
+    const uploadIcon = document.getElementById('upload-icon');
+    const uploadText = document.getElementById('upload-text');
+    
+    if (!uploadZone) return;
+
+    // Drag & Drop Events
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, preventDefaults, false);
+        document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, highlight, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, unhighlight, false);
+    });
+
+    function highlight(e) {
+        uploadZone.style.borderColor = 'var(--primary)';
+        uploadZone.style.background = 'var(--primary-light)';
+    }
+
+    function unhighlight(e) {
+        uploadZone.style.borderColor = '';
+        uploadZone.style.background = '';
+    }
+
+    // Drop-Handler
+    uploadZone.addEventListener('drop', handleDrop, false);
+
+    function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        handleFiles(files);
+    }
+
+    // File Input Change
+    fileInput.addEventListener('change', function() {
+        handleFiles(this.files);
+    });
+
+    function handleFiles(files) {
+        if (files.length === 0) return;
+        
+        uploadText.style.display = 'none';
+        uploadProgress.style.display = 'block';
+        uploadIcon.textContent = 'hourglass_empty';
+        
+        let uploaded = 0;
+        const total = files.length;
+        
+        Array.from(files).forEach(file => {
+            uploadFile(file, () => {
+                uploaded++;
+                const percent = Math.round((uploaded / total) * 100);
+                uploadProgressBar.style.width = percent + '%';
+                uploadStatus.textContent = `${uploaded} von ${total} Datei(en) hochgeladen`;
+                
+                if (uploaded === total) {
+                    setTimeout(() => {
+                        uploadIcon.textContent = 'check_circle';
+                        uploadIcon.style.color = 'var(--success)';
+                        uploadStatus.textContent = 'Upload abgeschlossen!';
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    }, 500);
+                }
+            }, (error) => {
+                uploadIcon.textContent = 'error';
+                uploadIcon.style.color = 'var(--error)';
+                uploadStatus.textContent = 'Fehler: ' + error;
+            });
+        });
+    }
+
+    function uploadFile(file, onSuccess, onError) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+        fetch('{% url "dms:upload_file" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                onSuccess();
+            } else {
+                onError(data.error || 'Upload fehlgeschlagen');
+            }
+        })
+        .catch(error => {
+            onError('Netzwerkfehler');
+        });
+    }
+
+    // Menu-Button (App Grid) Toggle
+    const appGridBtn = document.querySelector('.app-grid-btn');
+    if (appGridBtn) {
+        appGridBtn.addEventListener('click', function() {
+            window.location.href = '{% url "dms:index" %}';
+        });
+    }
+});
+</script>
 {% endblock %}

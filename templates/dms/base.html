@@ -788,6 +788,12 @@
             font-size: 12px;
         }
         
+        /* Animations */
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
         /* Responsive */
         @media (max-width: 768px) {
             .header { padding: 0 16px; }
@@ -850,6 +856,18 @@
         <p>DMS - Dokumentenmanagementsystem</p>
     </footer>
     
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // App Grid Button - Navigate to Dashboard
+        const appGridBtn = document.querySelector('.app-grid-btn');
+        if (appGridBtn) {
+            appGridBtn.style.cursor = 'pointer';
+            appGridBtn.addEventListener('click', function() {
+                window.location.href = '/';
+            });
+        }
+    });
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>
