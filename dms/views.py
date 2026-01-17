@@ -1045,5 +1045,6 @@ def document_split(request, pk):
     return render(request, 'dms/document_split.html', {
         'document': document,
         'page_count': page_count,
+        'page_range': range(1, page_count + 1),
         'employees': employees,
     })
