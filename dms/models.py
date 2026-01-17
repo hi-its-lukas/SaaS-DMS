@@ -158,6 +158,10 @@ class Document(models.Model):
     
     sha256_hash = models.CharField(max_length=64, db_index=True, help_text="SHA-256 hash of original file")
     
+    document_date = models.DateField(null=True, blank=True, db_index=True, 
+                                     verbose_name="Belegdatum",
+                                     help_text="Monat/Jahr zu dem das Dokument gehört")
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     archived_at = models.DateTimeField(null=True, blank=True)

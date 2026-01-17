@@ -413,6 +413,24 @@ def split_pdf_by_datamatrix(file_path, output_dir, timeout_per_page=5):
         return result
 
 
+def parse_month_folder_to_date(month_folder):
+    """
+    Konvertiert YYYYMM Ordnername zu einem Datum (1. des Monats).
+    z.B. '202601' → date(2026, 1, 1)
+    """
+    if not month_folder or len(month_folder) != 6:
+        return None
+    try:
+        year = int(month_folder[:4])
+        month = int(month_folder[4:6])
+        if 1 <= month <= 12 and 2000 <= year <= 2100:
+            from datetime import date
+            return date(year, month, 1)
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
 def find_employee_by_id(employee_id, tenant=None):
     """
     Sucht einen Mitarbeiter anhand der ID.
@@ -829,7 +847,8 @@ def _run_sage_scan(task_self):
                                     status=split_status,
                                     source='SAGE',
                                     sha256_hash=split_hash,
-                                    metadata=split_metadata
+                                    metadata=split_metadata,
+                                    document_date=parse_month_folder_to_date(month_folder)
                                 )
                                 
                                 auto_classify_document(split_doc, tenant=tenant)
@@ -930,7 +949,8 @@ def _run_sage_scan(task_self):
                 status=status,
                 source='SAGE',
                 sha256_hash=file_hash,
-                metadata=metadata
+                metadata=metadata,
+                document_date=parse_month_folder_to_date(month_folder)
             )
             
             ProcessedFile.objects.create(
