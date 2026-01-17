@@ -982,10 +982,12 @@ def document_split(request, pk):
         return redirect('dms:document_detail', pk=pk)
     
     from .models import Tenant
-    employees = Employee.objects.filter(is_active=True)
-    if document.tenant:
-        employees = employees.filter(tenant=document.tenant)
-    employees = employees.order_by('last_name', 'first_name')
+    # Zeige alle aktiven Mitarbeiter, bevorzugt vom gleichen Mandanten
+    employees = Employee.objects.filter(is_active=True).order_by('last_name', 'first_name')
+    
+    # Falls keine aktiven gefunden, zeige auch inaktive
+    if not employees.exists():
+        employees = Employee.objects.all().order_by('last_name', 'first_name')
     
     if request.method == 'POST':
         try:
