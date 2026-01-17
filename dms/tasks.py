@@ -242,7 +242,10 @@ def extract_employee_from_datamatrix(file_path, max_pages=1, timeout_seconds=10)
 def parse_employee_id_from_datamatrix(raw_data):
     """
     Parst die Mitarbeiter-ID aus den DataMatrix-Rohdaten.
-    Sage DataMatrix kann verschiedene Formate haben:
+    
+    Unterstützte Formate:
+    - Sage Lohnscheine: DDLGA;MD1;PN1;UNlukas.hengl;ED01.12.2025;ES12/2025;YR2025
+      → PN = Personalnummer
     - Reine Zahlen
     - ACCOLD-Format: ^1008=PersonalNr^
     - Klartext: PersNr: 123
@@ -256,6 +259,9 @@ def parse_employee_id_from_datamatrix(raw_data):
         return raw_data
     
     patterns = [
+        r';PN(\d+)',
+        r'^PN(\d+)',
+        r'PN(\d+);',
         r'\^1008=([^^\s]+)\^',
         r'\^1010=(\d+)',
         r'PersNr[:\s]*(\d+)',
@@ -266,7 +272,6 @@ def parse_employee_id_from_datamatrix(raw_data):
         r'EmployeeID[:\s]*(\d+)',
         r'^(\d{4,8})$',
         r'\|(\d+)\|',
-        r';(\d+);',
         r'=(\d{1,10})\^',
     ]
     
@@ -280,12 +285,52 @@ def parse_employee_id_from_datamatrix(raw_data):
             if digits:
                 return digits.group(1)
     
+    if ';' in raw_data:
+        parts = raw_data.split(';')
+        for part in parts:
+            if part.startswith('PN') and len(part) > 2:
+                emp_id = part[2:]
+                if emp_id.isdigit():
+                    return emp_id
+                digits = re.search(r'(\d+)', emp_id)
+                if digits:
+                    return digits.group(1)
+    
     parts = re.split(r'[|;,\s\^=]+', raw_data)
     for part in parts:
         if part.isdigit() and 1 <= len(part) <= 10:
             return part
     
     return None
+
+
+def parse_datamatrix_metadata(raw_data):
+    """
+    Extrahiert alle Metadaten aus dem Sage DataMatrix-Format.
+    Format: DDLGA;MD1;PN1;UNlukas.hengl;ED01.12.2025;ES12/2025;YR2025
+    
+    Returns: dict mit keys: employee_id, tenant_code, username, date, period, year
+    """
+    result = {}
+    if not raw_data or ';' not in raw_data:
+        return result
+    
+    parts = raw_data.strip().split(';')
+    for part in parts:
+        if part.startswith('PN'):
+            result['employee_id'] = part[2:]
+        elif part.startswith('MD'):
+            result['tenant_code'] = part[2:]
+        elif part.startswith('UN'):
+            result['username'] = part[2:]
+        elif part.startswith('ED'):
+            result['date'] = part[2:]
+        elif part.startswith('ES'):
+            result['period'] = part[2:]
+        elif part.startswith('YR'):
+            result['year'] = part[2:]
+    
+    return result
 
 
 def log_datamatrix_content(raw_data, file_name):
