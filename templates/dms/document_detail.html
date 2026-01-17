@@ -10,14 +10,23 @@
             <p style="color: #666;">{{ document.original_filename }}</p>
         </div>
         <div>
-            {% if document.mime_type == 'application/pdf' or document.mime_type|slice:":6" == 'image/' %}
-            <a href="{% url 'dms:document_view' document.pk %}" class="btn btn-primary" target="_blank">Ansehen</a>
-            {% endif %}
             <a href="{% url 'dms:document_download' document.pk %}" class="btn btn-success">Herunterladen</a>
             <a href="{% url 'dms:document_list' %}" class="btn">Zurück zur Liste</a>
         </div>
     </div>
 </div>
+
+{% if document.mime_type == 'application/pdf' %}
+<div class="card" style="margin-bottom: 20px;">
+    <h2>Dokumentvorschau</h2>
+    <iframe src="{% url 'dms:document_view' document.pk %}" style="width: 100%; height: 800px; border: 1px solid #ddd; border-radius: 4px;"></iframe>
+</div>
+{% elif document.mime_type|slice:":6" == 'image/' %}
+<div class="card" style="margin-bottom: 20px;">
+    <h2>Dokumentvorschau</h2>
+    <img src="{% url 'dms:document_view' document.pk %}" style="max-width: 100%; height: auto; border-radius: 4px;" alt="{{ document.title }}">
+</div>
+{% endif %}
 
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
     <div class="card">
