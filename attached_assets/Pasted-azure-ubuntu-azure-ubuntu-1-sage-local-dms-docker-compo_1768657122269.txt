@@ -1,0 +1,40 @@
+azure-ubuntu@azure-ubuntu-1:~/sage-local-dms$ docker-compose logs celery_worker | tail -30
+celery_worker_1  | - ** ---------- .> results:     redis://redis:6379/0
+celery_worker_1  | - *** --- * --- .> concurrency: 1 (prefork)
+celery_worker_1  | -- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+celery_worker_1  | --- ***** ----- 
+celery_worker_1  |  -------------- [queues]
+celery_worker_1  |                 .> celery           exchange=celery(direct) key=celery
+celery_worker_1  |                 
+celery_worker_1  | 
+celery_worker_1  | [tasks]
+celery_worker_1  |   . dms.tasks.import_sage_cloud_leave_requests
+celery_worker_1  |   . dms.tasks.import_sage_cloud_timesheets
+celery_worker_1  |   . dms.tasks.poll_email_inbox
+celery_worker_1  |   . dms.tasks.scan_manual_input
+celery_worker_1  |   . dms.tasks.scan_sage_archive
+celery_worker_1  |   . dms.tasks.sync_sage_cloud_employees
+celery_worker_1  |   . dms_project.celery.debug_task
+celery_worker_1  | 
+celery_worker_1  | [2026-01-17 13:21:55,226: INFO/MainProcess] Connected to redis://redis:6379/0
+celery_worker_1  | [2026-01-17 13:21:55,236: INFO/MainProcess] mingle: searching for neighbors
+celery_worker_1  | [2026-01-17 13:21:56,259: INFO/MainProcess] mingle: all alone
+celery_worker_1  | [2026-01-17 13:21:56,277: INFO/MainProcess] celery@48d7fb91ed01 ready.
+celery_worker_1  | [2026-01-17 13:21:56,282: INFO/MainProcess] Task dms.tasks.scan_sage_archive[7befad19-189f-4618-9e78-b04e3b4e17dd] received
+celery_worker_1  | [2026-01-17 13:21:56,284: INFO/MainProcess] Task dms.tasks.scan_sage_archive[41a3defd-ec0d-4557-9d0a-c2b6ea421c0d] received
+celery_worker_1  | [SageScanner] Scan übersprungen - Redis-Lock aktiv
+celery_worker_1  | [2026-01-17 13:21:56,335: INFO/ForkPoolWorker-1] Task dms.tasks.scan_sage_archive[7befad19-189f-4618-9e78-b04e3b4e17dd] succeeded in 0.05201374299940653s: {'status': 'skipped', 'message': 'Another scan is already running (Redis lock)'}
+celery_worker_1  | [SageScanner] Scan übersprungen - Redis-Lock aktiv
+celery_worker_1  | [2026-01-17 13:21:56,359: INFO/ForkPoolWorker-1] Task dms.tasks.scan_sage_archive[41a3defd-ec0d-4557-9d0a-c2b6ea421c0d] succeeded in 0.02089723799872445s: {'status': 'skipped', 'message': 'Another scan is already running (Redis lock)'}
+celery_worker_1  | [2026-01-17 14:10:00,011: INFO/MainProcess] Task dms.tasks.scan_sage_archive[cfcce674-869b-40f7-9bb2-9516f0e79191] received
+celery_worker_1  | [SageScanner] Scan übersprungen - Redis-Lock aktiv
+celery_worker_1  | [2026-01-17 14:10:00,034: INFO/ForkPoolWorker-1] Task dms.tasks.scan_sage_archive[cfcce674-869b-40f7-9bb2-9516f0e79191] succeeded in 0.021846145999006694s: {'status': 'skipped', 'message': 'Another scan is already running (Redis lock)'}
+azure-ubuntu@azure-ubuntu-1:~/sage-local-dms$ 
+
+
+
+
+
+
+
+

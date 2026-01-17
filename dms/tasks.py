@@ -99,14 +99,15 @@ def auto_classify_document(document, tenant=None):
 
 logger = logging.getLogger('dms')
 
-_redis_client = None
 
 def get_redis_client():
-    global _redis_client
-    if _redis_client is None:
-        redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-        _redis_client = redis.from_url(redis_url)
-    return _redis_client
+    """
+    Erstellt eine NEUE Redis-Verbindung bei jedem Aufruf.
+    Wichtig für Celery Prefork-Worker - gecachte Verbindungen funktionieren nicht nach Fork.
+    """
+    redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    return redis.from_url(redis_url)
+
 
 @contextmanager
 def distributed_lock(lock_name, timeout=3600):
@@ -119,11 +120,16 @@ def distributed_lock(lock_name, timeout=3600):
     lock_key = f"dms:lock:{lock_name}"
     lock_value = str(uuid.uuid4())
     
-    # SETNX ist atomar - nur EIN Client kann erfolgreich setzen
-    acquired = client.set(lock_key, lock_value, nx=True, ex=timeout)
-    
     try:
+        # SETNX ist atomar - nur EIN Client kann erfolgreich setzen
+        acquired = client.set(lock_key, lock_value, nx=True, ex=timeout)
+        logger.info(f"[Lock] {lock_name}: acquired={acquired}, key={lock_key}")
+        
         yield bool(acquired)
+    except redis.exceptions.ConnectionError as e:
+        logger.error(f"[Lock] Redis connection error: {e}")
+        # Bei Verbindungsfehler: Lock überspringen, Task trotzdem ausführen
+        yield True
     finally:
         if acquired:
             # Nur löschen wenn wir den Lock besitzen (Lua-Script für Atomarität)
@@ -136,8 +142,9 @@ def distributed_lock(lock_name, timeout=3600):
             """
             try:
                 client.eval(lua_script, 1, lock_key, lock_value)
-            except Exception:
-                pass
+                logger.info(f"[Lock] {lock_name}: released")
+            except Exception as e:
+                logger.warning(f"[Lock] Failed to release {lock_name}: {e}")
 
 
 def log_system_event(level, source, message, details=None):
