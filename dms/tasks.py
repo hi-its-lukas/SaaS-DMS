@@ -242,7 +242,10 @@ def extract_employee_from_datamatrix(file_path, max_pages=1, timeout_seconds=10)
 def parse_employee_id_from_datamatrix(raw_data):
     """
     Parst die Mitarbeiter-ID aus den DataMatrix-Rohdaten.
-    Sage DataMatrix kann verschiedene Formate haben.
+    Sage DataMatrix kann verschiedene Formate haben:
+    - Reine Zahlen
+    - ACCOLD-Format: ^1008=PersonalNr^
+    - Klartext: PersNr: 123
     """
     if not raw_data:
         return None
@@ -253,25 +256,41 @@ def parse_employee_id_from_datamatrix(raw_data):
         return raw_data
     
     patterns = [
+        r'\^1008=([^^\s]+)\^',
+        r'\^1010=(\d+)',
         r'PersNr[:\s]*(\d+)',
         r'Personalnummer[:\s]*(\d+)',
+        r'PersonalNr[:\s]*(\d+)',
         r'MA[:\s]*(\d+)',
+        r'EmpID[:\s]*(\d+)',
+        r'EmployeeID[:\s]*(\d+)',
         r'^(\d{4,8})$',
         r'\|(\d+)\|',
         r';(\d+);',
+        r'=(\d{1,10})\^',
     ]
     
     for pattern in patterns:
         match = re.search(pattern, raw_data, re.IGNORECASE)
         if match:
-            return match.group(1)
+            value = match.group(1)
+            if value.isdigit():
+                return value
+            digits = re.search(r'(\d+)', value)
+            if digits:
+                return digits.group(1)
     
-    parts = re.split(r'[|;,\s]+', raw_data)
+    parts = re.split(r'[|;,\s\^=]+', raw_data)
     for part in parts:
-        if part.isdigit() and 3 <= len(part) <= 10:
+        if part.isdigit() and 1 <= len(part) <= 10:
             return part
     
     return None
+
+
+def log_datamatrix_content(raw_data, file_name):
+    """Loggt den Inhalt eines DataMatrix-Codes für Debugging"""
+    logger.info(f"DataMatrix in {file_name}: {raw_data[:200] if raw_data else 'None'}")
 
 
 def split_pdf_by_datamatrix(file_path, output_dir, timeout_per_page=5):
