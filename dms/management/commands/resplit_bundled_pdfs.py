@@ -6,8 +6,7 @@ Jede Seite wird einzeln gescannt und pro Mitarbeiter ein Dokument erstellt.
 """
 
 from django.core.management.base import BaseCommand
-from django.db import transaction
-from dms.models import Document, Employee, ProcessedFile, PersonnelFileEntry
+from dms.models import Document
 from dms.encryption import decrypt_data, encrypt_data
 from dms.tasks import (
     find_employee_by_id, 
@@ -18,7 +17,6 @@ from dms.tasks import (
 )
 from pathlib import Path
 import hashlib
-import signal
 
 
 class Command(BaseCommand):
@@ -223,24 +221,20 @@ class Command(BaseCommand):
             return 0
     
     def _scan_page_with_timeout(self, pdf_doc, page_num, timeout_seconds):
-        """Scannt eine Seite mit Timeout"""
+        """Scannt eine Seite mit Timeout (Thread-basiert für Docker-Kompatibilität)"""
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
         from pylibdmtx.pylibdmtx import decode
         from PIL import Image
+        import fitz
         import io
         
-        def timeout_handler(signum, frame):
-            raise TimeoutError("Scan timeout")
-        
-        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(timeout_seconds)
-        
-        try:
+        def do_scan():
             page = pdf_doc[page_num]
-            pix = page.get_pixmap(matrix=__import__('fitz').Matrix(1.5, 1.5))
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.0, 1.0))
             img_data = pix.tobytes("png")
             img = Image.open(io.BytesIO(img_data))
             
-            decoded = decode(img)
+            decoded = decode(img, timeout=timeout_seconds * 1000)
             
             for d in decoded:
                 raw_data = d.data.decode('utf-8')
@@ -253,7 +247,12 @@ class Command(BaseCommand):
                         'raw': raw_data
                     }
             return None
-            
-        finally:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
+        
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(do_scan)
+                return future.result(timeout=timeout_seconds + 2)
+        except FuturesTimeoutError:
+            raise TimeoutError("Scan timeout")
+        except Exception as e:
+            raise e
