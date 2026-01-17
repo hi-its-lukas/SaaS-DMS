@@ -274,6 +274,138 @@ def parse_employee_id_from_datamatrix(raw_data):
     return None
 
 
+def split_pdf_by_datamatrix(file_path, output_dir, timeout_per_page=5):
+    """
+    Teilt ein mehrseitiges PDF anhand von DataMatrix-Codes auf.
+    Jede Seite mit einem neuen Mitarbeiter-Code startet ein neues Dokument.
+    
+    Args:
+        file_path: Pfad zur Original-PDF
+        output_dir: Verzeichnis für die geteilten PDFs
+        timeout_per_page: Timeout in Sekunden pro Seite
+        
+    Returns:
+        list of dicts: [{'file_path': str, 'employee_id': str, 'pages': list, 'employee': Employee or None}]
+    """
+    import fitz
+    from pylibdmtx.pylibdmtx import decode
+    from PIL import Image
+    import io
+    import tempfile
+    
+    result = []
+    
+    try:
+        doc = fitz.open(file_path)
+        total_pages = len(doc)
+        
+        if total_pages <= 1:
+            doc.close()
+            return result
+        
+        page_employee_map = []
+        current_employee_id = None
+        
+        log_system_event('INFO', 'PDFSplitter', f"Scanne {total_pages} Seiten für DataMatrix-Codes: {Path(file_path).name}")
+        
+        for page_num in range(total_pages):
+            try:
+                page = doc[page_num]
+                pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+                img_data = pix.tobytes("png")
+                img = Image.open(io.BytesIO(img_data))
+                
+                decoded = decode(img)
+                page_emp_id = None
+                
+                for d in decoded:
+                    try:
+                        raw_data = d.data.decode('utf-8')
+                        emp_id = parse_employee_id_from_datamatrix(raw_data)
+                        if emp_id:
+                            page_emp_id = emp_id
+                            break
+                    except:
+                        continue
+                
+                if page_emp_id:
+                    current_employee_id = page_emp_id
+                
+                page_employee_map.append({
+                    'page': page_num,
+                    'employee_id': current_employee_id,
+                    'has_own_code': page_emp_id is not None
+                })
+                
+            except Exception as e:
+                logger.warning(f"Error scanning page {page_num}: {e}")
+                page_employee_map.append({
+                    'page': page_num,
+                    'employee_id': current_employee_id,
+                    'has_own_code': False
+                })
+        
+        unique_employees = set(p['employee_id'] for p in page_employee_map if p['employee_id'])
+        
+        if len(unique_employees) <= 1:
+            doc.close()
+            log_system_event('INFO', 'PDFSplitter', f"Nur ein Mitarbeiter gefunden, kein Split nötig: {Path(file_path).name}")
+            return result
+        
+        log_system_event('INFO', 'PDFSplitter', f"Gefunden: {len(unique_employees)} verschiedene Mitarbeiter in {Path(file_path).name}")
+        
+        employee_pages = {}
+        for p in page_employee_map:
+            emp_id = p['employee_id']
+            if emp_id:
+                if emp_id not in employee_pages:
+                    employee_pages[emp_id] = []
+                employee_pages[emp_id].append(p['page'])
+        
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        base_name = Path(file_path).stem
+        
+        for emp_id, pages in employee_pages.items():
+            try:
+                new_doc = fitz.open()
+                
+                for page_num in sorted(pages):
+                    new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+                
+                split_filename = f"{base_name}_MA{emp_id}.pdf"
+                split_path = output_path / split_filename
+                new_doc.save(str(split_path))
+                new_doc.close()
+                
+                result.append({
+                    'file_path': str(split_path),
+                    'employee_id': emp_id,
+                    'pages': pages,
+                    'page_count': len(pages),
+                    'original_file': str(file_path)
+                })
+                
+                log_system_event('INFO', 'PDFSplitter', 
+                    f"Erstellt: {split_filename} ({len(pages)} Seiten für MA {emp_id})")
+                
+            except Exception as e:
+                logger.error(f"Error creating split PDF for employee {emp_id}: {e}")
+        
+        doc.close()
+        
+        log_system_event('INFO', 'PDFSplitter', 
+            f"Split abgeschlossen: {len(result)} Dokumente aus {Path(file_path).name}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"PDF split failed for {file_path}: {e}")
+        log_system_event('ERROR', 'PDFSplitter', f"Split fehlgeschlagen: {str(e)}", {'file': str(file_path)})
+        return result
+
+
 def find_employee_by_id(employee_id, tenant=None):
     """
     Sucht einen Mitarbeiter anhand der ID.
@@ -639,6 +771,96 @@ def _run_sage_scan(task_self):
             description = 'Unbekanntes Dokument'
             
             if file_path.suffix.lower() == '.pdf':
+                import fitz
+                try:
+                    pdf_doc = fitz.open(str(file_path))
+                    page_count = len(pdf_doc)
+                    pdf_doc.close()
+                except:
+                    page_count = 1
+                
+                if page_count > 1:
+                    doc_type, is_personnel_type, _, _ = classify_sage_document(file_path.name)
+                    if is_personnel_type:
+                        split_output_dir = Path(settings.BASE_DIR) / 'data' / 'split_temp' / tenant_code
+                        split_results = split_pdf_by_datamatrix(str(file_path), str(split_output_dir))
+                        
+                        if split_results and len(split_results) > 1:
+                            log_system_event('INFO', 'SageScanner', 
+                                f"PDF aufgeteilt: {file_path.name} → {len(split_results)} Dokumente")
+                            
+                            split_docs_created = []
+                            for split_info in split_results:
+                                split_path = Path(split_info['file_path'])
+                                emp_id = split_info['employee_id']
+                                
+                                with open(split_path, 'rb') as sf:
+                                    split_content = sf.read()
+                                split_encrypted = encrypt_data(split_content)
+                                split_hash = calculate_sha256_chunked(str(split_path))
+                                split_size = len(split_content)
+                                
+                                split_employee = find_employee_by_id(emp_id, tenant=tenant)
+                                split_status = 'ASSIGNED' if split_employee else 'REVIEW_NEEDED'
+                                
+                                doc_type_split, _, category_split, desc_split = classify_sage_document(file_path.name)
+                                
+                                split_metadata = {
+                                    'original_path': str(file_path),
+                                    'split_from': file_path.name,
+                                    'employee_id_from_datamatrix': emp_id,
+                                    'pages_in_split': split_info['page_count'],
+                                    'tenant_code': tenant_code,
+                                    'doc_type': doc_type_split,
+                                    'is_personnel_document': True,
+                                    'month_folder': month_folder,
+                                }
+                                
+                                split_doc = Document.objects.create(
+                                    tenant=tenant,
+                                    title=split_path.stem,
+                                    original_filename=split_path.name,
+                                    file_extension='.pdf',
+                                    mime_type='application/pdf',
+                                    encrypted_content=split_encrypted,
+                                    file_size=split_size,
+                                    employee=split_employee,
+                                    status=split_status,
+                                    source='SAGE',
+                                    sha256_hash=split_hash,
+                                    metadata=split_metadata
+                                )
+                                
+                                auto_classify_document(split_doc, tenant=tenant)
+                                split_docs_created.append(str(split_doc.id))
+                                
+                                del split_content
+                                del split_encrypted
+                                
+                                try:
+                                    split_path.unlink()
+                                except:
+                                    pass
+                            
+                            ProcessedFile.objects.create(
+                                tenant=tenant,
+                                sha256_hash=file_hash,
+                                original_path=str(file_path),
+                                document=None
+                            )
+                            
+                            with hashes_lock:
+                                if tenant_code not in known_hashes_by_tenant:
+                                    known_hashes_by_tenant[tenant_code] = set()
+                                known_hashes_by_tenant[tenant_code].add(file_hash)
+                            
+                            with counter_lock:
+                                processed_count += len(split_results)
+                                personnel_docs += len(split_results)
+                            
+                            return {'success': True, 'split': True, 'split_count': len(split_results),
+                                    'filename': file_path.name, 'doc_ids': split_docs_created, 'tenant': tenant_code}
+                
                 dm_result = extract_employee_from_datamatrix(str(file_path))
                 
                 if dm_result['success'] and dm_result['employee_ids']:
