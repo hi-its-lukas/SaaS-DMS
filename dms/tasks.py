@@ -33,9 +33,10 @@ def get_mime_type(file_path):
         return 'application/octet-stream'
 
 
-def extract_employee_from_datamatrix(file_path):
+def extract_employee_from_datamatrix(file_path, max_pages=1, timeout_seconds=10):
     """
     Extrahiert DataMatrix-Codes aus einem PDF.
+    Optimiert: Nur erste Seite scannen, mit Timeout.
     
     Returns:
         dict with keys:
@@ -44,6 +45,8 @@ def extract_employee_from_datamatrix(file_path):
             'codes': list - List of extracted code data
             'employee_ids': list - Parsed employee IDs from codes
     """
+    import signal
+    
     result = {
         'success': False,
         'error': None,
@@ -51,33 +54,54 @@ def extract_employee_from_datamatrix(file_path):
         'employee_ids': []
     }
     
+    def timeout_handler(signum, frame):
+        raise TimeoutError("DataMatrix extraction timed out")
+    
     try:
         import fitz
         from pylibdmtx.pylibdmtx import decode
         from PIL import Image
         import io
         
-        doc = fitz.open(file_path)
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(timeout_seconds)
         
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-            img_data = pix.tobytes("png")
-            img = Image.open(io.BytesIO(img_data))
+        try:
+            doc = fitz.open(file_path)
+            pages_to_scan = min(len(doc), max_pages)
             
-            decoded = decode(img)
-            for d in decoded:
-                raw_data = d.data.decode('utf-8')
-                result['codes'].append({'page': page_num, 'raw': raw_data})
+            for page_num in range(pages_to_scan):
+                page = doc[page_num]
+                pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+                img_data = pix.tobytes("png")
+                img = Image.open(io.BytesIO(img_data))
                 
-                emp_id = parse_employee_id_from_datamatrix(raw_data)
-                if emp_id and emp_id not in result['employee_ids']:
-                    result['employee_ids'].append(emp_id)
+                decoded = decode(img)
+                for d in decoded:
+                    raw_data = d.data.decode('utf-8')
+                    result['codes'].append({'page': page_num, 'raw': raw_data})
+                    
+                    emp_id = parse_employee_id_from_datamatrix(raw_data)
+                    if emp_id and emp_id not in result['employee_ids']:
+                        result['employee_ids'].append(emp_id)
+                
+                if result['employee_ids']:
+                    break
+            
+            doc.close()
+            result['success'] = True
+            
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
         
-        doc.close()
-        result['success'] = True
         return result
         
+    except TimeoutError:
+        logger.warning(f"DataMatrix extraction timed out for {file_path}")
+        result['error'] = 'Timeout'
+        result['success'] = True
+        return result
     except Exception as e:
         logger.warning(f"DataMatrix extraction failed for {file_path}: {e}")
         result['error'] = str(e)
