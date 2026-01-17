@@ -11,6 +11,7 @@ urlpatterns = [
     path('documents/<uuid:pk>/', views.document_detail, name='document_detail'),
     path('documents/<uuid:pk>/download/', views.document_download, name='document_download'),
     path('documents/<uuid:pk>/view/', views.document_view, name='document_view'),
+    path('documents/<uuid:pk>/edit/', views.document_edit, name='document_edit'),
     path('documents/<uuid:pk>/versions/', views.document_versions, name='document_versions'),
     path('documents/<uuid:pk>/versions/<int:version_number>/download/', views.document_version_download, name='document_version_download'),
     path('tasks/', views.task_list, name='task_list'),

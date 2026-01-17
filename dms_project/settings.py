@@ -16,6 +16,9 @@ if os.environ.get('CSRF_TRUSTED_ORIGINS'):
     _csrf_origins.extend(os.environ.get('CSRF_TRUSTED_ORIGINS').split(','))
 CSRF_TRUSTED_ORIGINS = _csrf_origins
 
+# Allow embedding in iframes on same origin (for PDF preview)
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',

@@ -358,6 +358,46 @@ def document_view(request, pk):
 
 
 @login_required
+def document_edit(request, pk):
+    from .forms import DocumentEditForm
+    
+    document = get_object_or_404(Document, pk=pk)
+    
+    if not _can_access_document(request.user, document):
+        return HttpResponse('Permission denied', status=403)
+    
+    if request.method == 'POST':
+        form = DocumentEditForm(request.POST, instance=document, tenant=document.tenant)
+        if form.is_valid():
+            old_status = document.status
+            old_employee = document.employee
+            
+            document = form.save()
+            
+            changes = []
+            if old_status != document.status:
+                changes.append(f'Status: {old_status} → {document.status}')
+            if old_employee != document.employee:
+                old_name = old_employee.full_name if old_employee else 'Nicht zugewiesen'
+                new_name = document.employee.full_name if document.employee else 'Nicht zugewiesen'
+                changes.append(f'Mitarbeiter: {old_name} → {new_name}')
+            
+            _log_audit(request, 'EDIT', document=document, details={
+                'changes': changes
+            })
+            
+            messages.success(request, 'Dokument wurde erfolgreich aktualisiert.')
+            return redirect('dms:document_detail', pk=document.pk)
+    else:
+        form = DocumentEditForm(instance=document, tenant=document.tenant)
+    
+    return render(request, 'dms/document_edit.html', {
+        'document': document,
+        'form': form
+    })
+
+
+@login_required
 def task_list(request):
     if request.user.has_perm('dms.manage_documents'):
         tasks = Task.objects.all()

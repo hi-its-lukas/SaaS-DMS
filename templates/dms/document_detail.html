@@ -10,6 +10,7 @@
             <p style="color: #666;">{{ document.original_filename }}</p>
         </div>
         <div>
+            <a href="{% url 'dms:document_edit' document.pk %}" class="btn btn-primary">Bearbeiten</a>
             <a href="{% url 'dms:document_download' document.pk %}" class="btn btn-success">Herunterladen</a>
             <a href="{% url 'dms:document_list' %}" class="btn">Zurück zur Liste</a>
         </div>

@@ -336,6 +336,18 @@ SAGE_DOCUMENT_TYPES = {
         'category': '05.04',
         'description': 'Sage-Export'
     },
+    'BEITRAGSSCHULD': {
+        'patterns': ['Berechnung voraussichtliche Beitragsschuld', 'Beitragsschuld'],
+        'is_personnel': False,
+        'category': '05.03',
+        'description': 'Beitragsschuld-Berechnung'
+    },
+    'BEITRAGSLISTE': {
+        'patterns': ['Beitragsliste'],
+        'is_personnel': False,
+        'category': '05.03',
+        'description': 'Beitragsliste'
+    },
 }
 
 

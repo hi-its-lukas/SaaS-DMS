@@ -1,0 +1,103 @@
+{% extends 'dms/base.html' %}
+
+{% block title %}Dokument bearbeiten - {{ document.title }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: start;">
+        <div>
+            <h2>Dokument bearbeiten</h2>
+            <p style="color: #666;">{{ document.original_filename }}</p>
+        </div>
+        <div>
+            <a href="{% url 'dms:document_detail' document.pk %}" class="btn">Abbrechen</a>
+        </div>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+    <div class="card">
+        <h2>Attribute bearbeiten</h2>
+        <form method="post">
+            {% csrf_token %}
+            
+            <div style="margin-bottom: 16px;">
+                <label for="id_title" style="display: block; margin-bottom: 4px; font-weight: 500;">Titel</label>
+                <input type="text" name="title" id="id_title" value="{{ form.title.value|default:'' }}" 
+                       style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);">
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <label for="id_employee" style="display: block; margin-bottom: 4px; font-weight: 500;">Mitarbeiter</label>
+                <select name="employee" id="id_employee" 
+                        style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);">
+                    <option value="">-- Nicht zugewiesen --</option>
+                    {% for emp in form.employee.field.queryset %}
+                    <option value="{{ emp.pk }}" {% if form.employee.value == emp.pk|stringformat:'s' or form.instance.employee_id == emp.pk %}selected{% endif %}>
+                        {{ emp.full_name }} ({{ emp.employee_id }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <label for="id_document_type" style="display: block; margin-bottom: 4px; font-weight: 500;">Dokumenttyp</label>
+                <select name="document_type" id="id_document_type" 
+                        style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);">
+                    <option value="">-- Nicht zugewiesen --</option>
+                    {% for dt in form.document_type.field.queryset %}
+                    <option value="{{ dt.pk }}" {% if form.document_type.value == dt.pk|stringformat:'s' or form.instance.document_type_id == dt.pk %}selected{% endif %}>
+                        {{ dt.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <label for="id_status" style="display: block; margin-bottom: 4px; font-weight: 500;">Status</label>
+                <select name="status" id="id_status" 
+                        style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);">
+                    {% for value, label in form.fields.status.choices %}
+                    <option value="{{ value }}" {% if form.status.value == value or form.instance.status == value %}selected{% endif %}>
+                        {{ label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <label for="id_notes" style="display: block; margin-bottom: 4px; font-weight: 500;">Notizen</label>
+                <textarea name="notes" id="id_notes" rows="3" 
+                          style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);">{{ form.notes.value|default:'' }}</textarea>
+            </div>
+            
+            <div style="display: flex; gap: 12px;">
+                <button type="submit" class="btn btn-primary">Speichern</button>
+                <a href="{% url 'dms:document_detail' document.pk %}" class="btn">Abbrechen</a>
+            </div>
+        </form>
+    </div>
+    
+    <div class="card">
+        <h2>Vorschau</h2>
+        {% if document.mime_type == 'application/pdf' %}
+        <iframe src="{% url 'dms:document_view' document.pk %}" style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 4px;"></iframe>
+        {% elif document.mime_type|slice:":6" == 'image/' %}
+        <img src="{% url 'dms:document_view' document.pk %}" style="max-width: 100%; height: auto; border-radius: 4px;" alt="{{ document.title }}">
+        {% else %}
+        <p style="color: #666;">Keine Vorschau verfügbar</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card" style="margin-top: 20px;">
+    <h2>Aktuelle Informationen</h2>
+    <table>
+        <tr><th style="width: 140px;">Dateiname</th><td>{{ document.original_filename }}</td></tr>
+        <tr><th>Quelle</th><td>{{ document.get_source_display }}</td></tr>
+        <tr><th>MIME-Typ</th><td>{{ document.mime_type }}</td></tr>
+        <tr><th>Größe</th><td>{{ document.file_size_display }}</td></tr>
+        <tr><th>Erstellt</th><td>{{ document.created_at|date:"d.m.Y H:i" }}</td></tr>
+    </table>
+</div>
+{% endblock %}
