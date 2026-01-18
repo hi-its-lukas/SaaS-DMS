@@ -194,17 +194,7 @@
         }
         
         .quick-menu-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 1999;
             display: none;
-        }
-        
-        .quick-menu-overlay.active {
-            display: block;
         }
         
         .header-title {
@@ -962,7 +952,6 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <div id="quick-menu-overlay" class="quick-menu-overlay"></div>
     <header class="header">
         <div class="header-left">
             <div class="app-menu-container">
@@ -1115,52 +1104,29 @@
     
     <script>
     (function() {
-        let menuOpen = false;
         const appGridBtn = document.getElementById('app-grid-btn');
         const quickMenu = document.getElementById('quick-menu');
-        const overlay = document.getElementById('quick-menu-overlay');
         
-        function openMenu() {
-            if (quickMenu && overlay) {
-                quickMenu.classList.add('active');
-                overlay.classList.add('active');
-                menuOpen = true;
-            }
-        }
-        
-        function closeMenu() {
-            if (quickMenu && overlay) {
-                quickMenu.classList.remove('active');
-                overlay.classList.remove('active');
-                menuOpen = false;
-            }
-        }
+        if (!appGridBtn || !quickMenu) return;
         
         // Toggle button
-        if (appGridBtn) {
-            appGridBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (menuOpen) {
-                    closeMenu();
-                } else {
-                    openMenu();
-                }
-            });
-        }
+        appGridBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            quickMenu.classList.toggle('active');
+        });
         
-        // Overlay closes menu
-        if (overlay) {
-            overlay.addEventListener('click', function(e) {
-                e.stopPropagation();
-                closeMenu();
-            });
-        }
+        // Click outside closes menu
+        document.addEventListener('click', function(e) {
+            if (!quickMenu.contains(e.target) && !appGridBtn.contains(e.target)) {
+                quickMenu.classList.remove('active');
+            }
+        });
         
         // ESC key closes menu
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && menuOpen) {
-                closeMenu();
+            if (e.key === 'Escape') {
+                quickMenu.classList.remove('active');
             }
         });
     })();
