@@ -361,6 +361,12 @@ class ScanJob(models.Model):
     def is_running(self):
         return self.status == 'RUNNING'
     
+    @property
+    def duration_seconds(self):
+        if self.completed_at and self.started_at:
+            return (self.completed_at - self.started_at).total_seconds()
+        return None
+    
     def __str__(self):
         return f"{self.get_source_display()} - {self.get_status_display()} ({self.progress_percent}%)"
     

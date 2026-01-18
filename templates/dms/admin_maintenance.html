@@ -277,10 +277,10 @@
                         {{ job.status }}
                     </span>
                 </td>
-                <td>{{ job.channel }}</td>
-                <td>{{ job.files_processed }} / {{ job.files_found }}</td>
+                <td>{{ job.get_source_display }}</td>
+                <td>{{ job.processed_files }} / {{ job.total_files }}</td>
                 <td>
-                    {% if job.finished_at %}
+                    {% if job.completed_at %}
                         {{ job.duration_seconds|floatformat:1 }}s
                     {% else %}
                         -
