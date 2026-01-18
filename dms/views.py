@@ -1426,3 +1426,21 @@ def admin_run_update_periods(request):
         messages.error(request, f'Fehler: {str(e)}')
     
     return redirect('dms:admin_maintenance')
+
+
+@login_required
+@permission_required('dms.change_systemsettings', raise_exception=True)
+@require_http_methods(['POST'])
+def admin_run_cleanup_doctypes(request):
+    """Cleanup duplicate DocumentTypes (merge UPPERCASE -> Normal)"""
+    from django.core.management import call_command
+    from io import StringIO
+    
+    try:
+        out = StringIO()
+        call_command('cleanup_duplicate_doctypes', stdout=out)
+        messages.success(request, f'Dokumenttypen bereinigt. {out.getvalue()[:500]}')
+    except Exception as e:
+        messages.error(request, f'Fehler: {str(e)}')
+    
+    return redirect('dms:admin_maintenance')

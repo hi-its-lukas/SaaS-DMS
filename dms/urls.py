@@ -49,4 +49,5 @@ urlpatterns = [
     path('maintenance/resplit-pdfs/', views.admin_run_resplit_pdfs, name='admin_run_resplit_pdfs'),
     path('maintenance/repair-employees/', views.admin_run_repair_employees, name='admin_run_repair_employees'),
     path('maintenance/update-periods/', views.admin_run_update_periods, name='admin_run_update_periods'),
+    path('maintenance/cleanup-doctypes/', views.admin_run_cleanup_doctypes, name='admin_run_cleanup_doctypes'),
 ]

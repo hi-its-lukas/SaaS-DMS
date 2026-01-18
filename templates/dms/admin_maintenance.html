@@ -221,6 +221,25 @@
             </button>
         </form>
     </div>
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-card-icon" style="background: #fff3e0; color: #ef6c00;">
+                <span class="material-icons">merge_type</span>
+            </div>
+        </div>
+        <h3 style="font-size: 18px; margin-bottom: 8px;">Dokumenttypen bereinigen</h3>
+        <p style="margin-bottom: 16px;">Zusammenführen von Duplikaten (GROSSBUCHSTABEN → Normal)</p>
+        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+            Löscht LOHNSCHEINE und verschiebt Dokumente zu Lohnscheine
+        </div>
+        <form method="post" action="{% url 'dms:admin_run_cleanup_doctypes' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn">
+                <span class="material-icons">cleaning_services</span>
+                Dokumenttypen bereinigen
+            </button>
+        </form>
+    </div>
 </div>
 
 <div class="card">
