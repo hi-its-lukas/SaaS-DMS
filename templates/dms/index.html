@@ -6,12 +6,41 @@
 {% block sub_header %}
 <div class="sub-header">
     <span class="sub-header-title">d.velop Default Dashboard</span>
+    <button id="toggle-edit-mode" class="btn btn-sm" style="margin-left: auto;">
+        <span class="material-icons" style="font-size: 18px; vertical-align: middle;">edit</span>
+        Anpassen
+    </button>
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+    .widget.sortable-ghost { opacity: 0.4; }
+    .widget.sortable-chosen { box-shadow: 0 8px 25px rgba(0,0,0,0.15); transform: scale(1.02); }
+    .widget.sortable-drag { cursor: grabbing; }
+    .edit-mode .widget { cursor: grab; }
+    .edit-mode .widget:hover { box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+    .edit-mode .widget-header::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 4px;
+        background: var(--primary);
+        border-radius: var(--radius-md) var(--radius-md) 0 0;
+    }
+    .edit-mode .widget { position: relative; }
+    .drag-handle { display: none; position: absolute; top: 8px; right: 8px; color: var(--text-muted); cursor: grab; }
+    .edit-mode .drag-handle { display: block; }
+    .sub-header { display: flex; align-items: center; }
+    .btn-sm { padding: 6px 12px; font-size: 13px; }
+    .edit-mode-active { background: var(--primary) !important; color: white !important; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="widget-grid">
-    <div class="widget">
+<div class="widget-grid" id="widget-grid">
+    <div class="widget" data-widget-id="search">
+        <span class="material-icons drag-handle">drag_indicator</span>
         <div class="widget-header">
             <div class="widget-icon blue">
                 <span class="material-icons">search</span>
@@ -32,7 +61,8 @@
         </div>
     </div>
     
-    <div class="widget">
+    <div class="widget" data-widget-id="import">
+        <span class="material-icons drag-handle">drag_indicator</span>
         <div class="widget-header">
             <div class="widget-icon green">
                 <span class="material-icons">upload_file</span>
@@ -62,7 +92,8 @@
         </div>
     </div>
     
-    <div class="widget">
+    <div class="widget" data-widget-id="tasks">
+        <span class="material-icons drag-handle">drag_indicator</span>
         <div class="widget-header">
             <div class="widget-icon orange">
                 <span class="material-icons">checklist</span>
@@ -105,7 +136,8 @@
         <a href="{% url 'dms:task_list' %}" class="task-create-link">Aufgaben anzeigen</a>
     </div>
     
-    <div class="widget">
+    <div class="widget" data-widget-id="recent">
+        <span class="material-icons drag-handle">drag_indicator</span>
         <div class="widget-header">
             <div class="widget-icon teal">
                 <span class="material-icons">schedule</span>
@@ -137,7 +169,8 @@
         </div>
     </div>
     
-    <div class="widget">
+    <div class="widget" data-widget-id="scan">
+        <span class="material-icons drag-handle">drag_indicator</span>
         <div class="widget-header">
             <div class="widget-icon purple">
                 <span class="material-icons">document_scanner</span>
@@ -174,7 +207,8 @@
         </div>
     </div>
     
-    <div class="widget">
+    <div class="widget" data-widget-id="config">
+        <span class="material-icons drag-handle">drag_indicator</span>
         <div class="widget-header">
             <div class="widget-icon gray">
                 <span class="material-icons">settings</span>
@@ -209,7 +243,8 @@
         </div>
     </div>
     
-    <div class="widget">
+    <div class="widget" data-widget-id="files">
+        <span class="material-icons drag-handle">drag_indicator</span>
         <div class="widget-header">
             <div class="widget-icon blue">
                 <span class="material-icons">create_new_folder</span>
@@ -237,7 +272,8 @@
         </div>
     </div>
     
-    <div class="widget">
+    <div class="widget" data-widget-id="filing">
+        <span class="material-icons drag-handle">drag_indicator</span>
         <div class="widget-header">
             <div class="widget-icon green">
                 <span class="material-icons">add_circle</span>
@@ -265,7 +301,8 @@
         </div>
     </div>
     
-    <div class="widget">
+    <div class="widget" data-widget-id="help">
+        <span class="material-icons drag-handle">drag_indicator</span>
         <div class="widget-header">
             <div class="widget-icon purple">
                 <span class="material-icons">help_outline</span>
@@ -516,6 +553,83 @@ document.addEventListener('DOMContentLoaded', function() {
             window.location.href = '{% url "dms:index" %}';
         });
     }
+    
+    // Widget Drag & Drop
+    const widgetGrid = document.getElementById('widget-grid');
+    const toggleEditBtn = document.getElementById('toggle-edit-mode');
+    let sortableInstance = null;
+    let isEditMode = false;
+    
+    // Load saved order
+    function loadWidgetOrder() {
+        const savedOrder = localStorage.getItem('dms_widget_order');
+        if (savedOrder) {
+            try {
+                const order = JSON.parse(savedOrder);
+                const widgets = Array.from(widgetGrid.querySelectorAll('.widget'));
+                const widgetMap = {};
+                widgets.forEach(w => {
+                    widgetMap[w.dataset.widgetId] = w;
+                });
+                order.forEach(id => {
+                    if (widgetMap[id]) {
+                        widgetGrid.appendChild(widgetMap[id]);
+                    }
+                });
+            } catch (e) {
+                console.log('Could not load widget order');
+            }
+        }
+    }
+    
+    // Save order
+    function saveWidgetOrder() {
+        const widgets = Array.from(widgetGrid.querySelectorAll('.widget'));
+        const order = widgets.map(w => w.dataset.widgetId);
+        localStorage.setItem('dms_widget_order', JSON.stringify(order));
+    }
+    
+    // Toggle edit mode
+    toggleEditBtn.addEventListener('click', function() {
+        isEditMode = !isEditMode;
+        widgetGrid.classList.toggle('edit-mode', isEditMode);
+        toggleEditBtn.classList.toggle('edit-mode-active', isEditMode);
+        toggleEditBtn.innerHTML = isEditMode 
+            ? '<span class="material-icons" style="font-size: 18px; vertical-align: middle;">check</span> Fertig'
+            : '<span class="material-icons" style="font-size: 18px; vertical-align: middle;">edit</span> Anpassen';
+        
+        if (isEditMode) {
+            initSortable();
+        } else {
+            if (sortableInstance) {
+                sortableInstance.destroy();
+                sortableInstance = null;
+            }
+        }
+    });
+    
+    function initSortable() {
+        if (typeof Sortable !== 'undefined') {
+            sortableInstance = new Sortable(widgetGrid, {
+                animation: 150,
+                handle: '.drag-handle',
+                ghostClass: 'sortable-ghost',
+                chosenClass: 'sortable-chosen',
+                dragClass: 'sortable-drag',
+                onEnd: function() {
+                    saveWidgetOrder();
+                }
+            });
+        }
+    }
+    
+    // Load order on page load
+    loadWidgetOrder();
 });
+
+// Load SortableJS dynamically
+const sortableScript = document.createElement('script');
+sortableScript.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js';
+document.head.appendChild(sortableScript);
 </script>
 {% endblock %}
