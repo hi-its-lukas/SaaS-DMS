@@ -1154,8 +1154,8 @@ def admin_maintenance(request):
         started_at__lt=stale_cutoff
     ).count()
     
-    last_scan_job = ScanJob.objects.filter(status='COMPLETED').order_by('-finished_at').first()
-    last_scan = last_scan_job.finished_at.strftime('%d.%m.%Y %H:%M') if last_scan_job else None
+    last_scan_job = ScanJob.objects.filter(status='COMPLETED').order_by('-completed_at').first()
+    last_scan = last_scan_job.completed_at.strftime('%d.%m.%Y %H:%M') if last_scan_job and last_scan_job.completed_at else None
     
     stats = {
         'total_documents': Document.objects.count(),
