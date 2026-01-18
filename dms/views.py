@@ -259,11 +259,12 @@ def upload_file(request):
 
 @login_required
 def document_list(request):
+    from django.utils import timezone
+    
     if request.user.has_perm('dms.view_all_documents'):
         documents = Document.objects.all()
     else:
         from .models import AccessPermission
-        from django.utils import timezone
         
         today = timezone.now().date()
         user_groups = request.user.groups.all()
