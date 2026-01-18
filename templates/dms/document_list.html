@@ -552,7 +552,7 @@
             <span>Eigenschaften filtern:</span>
         </div>
         
-        <div id="advancedFilters" style="display: {% if request.GET.status or request.GET.source or request.GET.employee or request.GET.period_year or request.GET.tenant or request.GET.file_type or request.GET.date_from %}block{% else %}none{% endif %};">
+        <div id="advancedFilters" style="display: {% if request.GET.status or request.GET.source or request.GET.employee or request.GET.period_year or request.GET.tenant or request.GET.file_type or request.GET.date_from or request.GET.file_category %}block{% else %}none{% endif %};">
             <p style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 16px 0 12px 0;">Allgemein</p>
             <div class="search-row">
                 <div class="search-field">
@@ -586,6 +586,15 @@
                         <option value="">Alle Mandanten</option>
                         {% for t in tenants %}
                         <option value="{{ t.id }}" {% if request.GET.tenant == t.id|stringformat:'s' %}selected{% endif %}>{{ t.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="search-field">
+                    <label>Aktenplan:</label>
+                    <select name="file_category">
+                        <option value="">Alle Akten</option>
+                        {% for cat in file_categories %}
+                        <option value="{{ cat.id }}" {% if request.GET.file_category == cat.id|stringformat:'s' %}selected{% endif %}{% if cat.is_parent %} style="font-weight: 600;"{% endif %}>{{ cat.code }} {{ cat.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -828,7 +837,7 @@
 {% if documents.has_other_pages %}
 <div class="pagination">
     {% if documents.has_previous %}
-        <a href="?page={{ documents.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.source %}&source={{ request.GET.source }}{% endif %}{% if request.GET.document_type %}&document_type={{ request.GET.document_type }}{% endif %}">
+        <a href="?page={{ documents.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.source %}&source={{ request.GET.source }}{% endif %}{% if request.GET.document_type %}&document_type={{ request.GET.document_type }}{% endif %}{% if request.GET.file_category %}&file_category={{ request.GET.file_category }}{% endif %}">
             <span class="material-icons" style="font-size: 16px; vertical-align: middle;">chevron_left</span>
             Zurück
         </a>
@@ -837,7 +846,7 @@
     <span class="current">Seite {{ documents.number }} von {{ documents.paginator.num_pages }}</span>
     
     {% if documents.has_next %}
-        <a href="?page={{ documents.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.source %}&source={{ request.GET.source }}{% endif %}{% if request.GET.document_type %}&document_type={{ request.GET.document_type }}{% endif %}">
+        <a href="?page={{ documents.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.source %}&source={{ request.GET.source }}{% endif %}{% if request.GET.document_type %}&document_type={{ request.GET.document_type }}{% endif %}{% if request.GET.file_category %}&file_category={{ request.GET.file_category }}{% endif %}">
             Weiter
             <span class="material-icons" style="font-size: 16px; vertical-align: middle;">chevron_right</span>
         </a>

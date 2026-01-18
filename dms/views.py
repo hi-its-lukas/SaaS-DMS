@@ -297,6 +297,7 @@ def document_list(request):
     period_month = request.GET.get('period_month')
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
+    file_category = request.GET.get('file_category')
     
     if status:
         documents = documents.filter(status=status)
@@ -331,6 +332,16 @@ def document_list(request):
         from datetime import datetime, timedelta
         date_to_dt = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
         documents = documents.filter(created_at__lt=date_to_dt)
+    if file_category:
+        from .models import PersonnelFileEntry, FileCategory as FC
+        category = FC.objects.filter(id=file_category).first()
+        if category:
+            category_ids = [category.id]
+            category_ids.extend(FC.objects.filter(parent=category).values_list('id', flat=True))
+            filed_doc_ids = PersonnelFileEntry.objects.filter(
+                category_id__in=category_ids
+            ).values_list('document_id', flat=True)
+            documents = documents.filter(id__in=filed_doc_ids)
     
     documents = documents.select_related('employee', 'document_type', 'owner', 'tenant').order_by('-created_at')
     
@@ -338,9 +349,25 @@ def document_list(request):
     page = request.GET.get('page', 1)
     documents = paginator.get_page(page)
     
-    from .models import DocumentType, Tenant
+    from .models import DocumentType, Tenant, FileCategory
     document_types = DocumentType.objects.filter(is_active=True)
     tenants = Tenant.objects.all().order_by('name')
+    
+    file_categories = []
+    for cat in FileCategory.objects.filter(parent__isnull=True).order_by('code'):
+        file_categories.append({
+            'id': cat.id,
+            'name': cat.name,
+            'code': cat.code,
+            'is_parent': True,
+        })
+        for child in cat.children.all().order_by('code'):
+            file_categories.append({
+                'id': child.id,
+                'name': f"  └ {child.name}",
+                'code': child.code,
+                'is_parent': False,
+            })
     
     current_year = timezone.now().year
     period_years = list(range(current_year, current_year - 5, -1))
@@ -352,6 +379,7 @@ def document_list(request):
         'document_types': document_types,
         'tenants': tenants,
         'period_years': period_years,
+        'file_categories': file_categories,
     })
 
 
