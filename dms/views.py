@@ -107,6 +107,13 @@ def sage_sync_timesheets(request):
 @login_required
 def index(request):
     from .models import ScanJob
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    stale_cutoff = timezone.now() - timedelta(hours=2)
+    ScanJob.objects.filter(status='RUNNING', started_at__lt=stale_cutoff).update(
+        status='FAILED', error_message='Timeout nach 2 Stunden'
+    )
     
     recent_documents = Document.objects.select_related('employee', 'document_type').order_by('-updated_at')[:10]
     open_tasks = Task.objects.filter(status='OPEN')[:5]
