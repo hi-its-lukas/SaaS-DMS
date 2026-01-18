@@ -379,6 +379,7 @@ class SystemSettingsAdminForm(forms.ModelForm):
 @admin.register(SystemSettings)
 class SystemSettingsAdmin(admin.ModelAdmin):
     form = SystemSettingsAdminForm
+    list_display = ('__str__', 'sage_cloud_api_url', 'ms_graph_tenant_id', 'samba_username')
     
     fieldsets = (
         ('Sage Cloud (REST)', {
