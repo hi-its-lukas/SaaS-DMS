@@ -36,13 +36,13 @@ urlpatterns = [
     # System Logs
     path('logs/', views.system_logs, name='system_logs'),
     
-    # Admin Maintenance
-    path('admin/maintenance/', views.admin_maintenance, name='admin_maintenance'),
-    path('admin/maintenance/create-filing-plan/', views.admin_run_create_filing_plan, name='admin_run_create_filing_plan'),
-    path('admin/maintenance/link-doctypes/', views.admin_run_link_doctypes, name='admin_run_link_doctypes'),
-    path('admin/maintenance/fix-categories/', views.admin_run_fix_categories, name='admin_run_fix_categories'),
-    path('admin/maintenance/file-documents/', views.admin_run_file_documents, name='admin_run_file_documents'),
-    path('admin/maintenance/scan-sage/', views.admin_run_scan_sage, name='admin_run_scan_sage'),
-    path('admin/maintenance/cleanup-orphans/', views.admin_run_cleanup_orphans, name='admin_run_cleanup_orphans'),
-    path('admin/maintenance/reset-locks/', views.admin_run_reset_locks, name='admin_run_reset_locks'),
+    # System Maintenance
+    path('maintenance/', views.admin_maintenance, name='admin_maintenance'),
+    path('maintenance/create-filing-plan/', views.admin_run_create_filing_plan, name='admin_run_create_filing_plan'),
+    path('maintenance/link-doctypes/', views.admin_run_link_doctypes, name='admin_run_link_doctypes'),
+    path('maintenance/fix-categories/', views.admin_run_fix_categories, name='admin_run_fix_categories'),
+    path('maintenance/file-documents/', views.admin_run_file_documents, name='admin_run_file_documents'),
+    path('maintenance/scan-sage/', views.admin_run_scan_sage, name='admin_run_scan_sage'),
+    path('maintenance/cleanup-orphans/', views.admin_run_cleanup_orphans, name='admin_run_cleanup_orphans'),
+    path('maintenance/reset-locks/', views.admin_run_reset_locks, name='admin_run_reset_locks'),
 ]
