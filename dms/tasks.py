@@ -10,7 +10,7 @@ from celery import shared_task
 from django.conf import settings
 from django.utils import timezone
 
-from .models import Document, ProcessedFile, Employee, Task, EmailConfig, SystemLog, Tenant, ScanJob, MatchingRule
+from .models import Document, ProcessedFile, Employee, Task, SystemLog, Tenant, ScanJob, MatchingRule
 from .encryption import encrypt_data, decrypt_data, calculate_sha256, encrypt_file, calculate_sha256_chunked, encrypt_file_streaming
 from .ocr import process_document_with_ocr, classify_document, extract_employee_info
 from .middleware import set_current_tenant, clear_tenant_context
@@ -1489,72 +1489,173 @@ def _run_manual_scan(task_self):
 
 
 @shared_task(bind=True, max_retries=3)
-def poll_email_inbox(self):
-    from O365 import Account, FileSystemTokenBackend
+def poll_central_inbox_graph(self):
+    """
+    Zentraler E-Mail-Ingest über Microsoft Graph API (Client Credentials Flow).
     
-    configs = EmailConfig.objects.filter(is_active=True)
+    Verwendet ein zentrales Postfach (z.B. ingest@dms.cloud) und routet E-Mails
+    basierend auf dem Token in der Empfängeradresse (upload.<token>@dms.cloud).
     
-    for config in configs:
-        # SAAS FIX: Tenant-Kontext setzen, falls Config einem Tenant gehört
-        tenant = getattr(config, 'tenant', None)
+    Konfiguration über Umgebungsvariablen:
+    - AZURE_INGEST_CLIENT_ID
+    - AZURE_INGEST_CLIENT_SECRET  
+    - AZURE_INGEST_TENANT_ID
+    - AZURE_INGEST_MAILBOX
+    """
+    from O365 import Account
+    
+    client_id = settings.AZURE_INGEST_CLIENT_ID
+    client_secret = settings.AZURE_INGEST_CLIENT_SECRET
+    azure_tenant_id = settings.AZURE_INGEST_TENANT_ID
+    mailbox = settings.AZURE_INGEST_MAILBOX
+    
+    if not all([client_id, client_secret, azure_tenant_id, mailbox]):
+        log_system_event('ERROR', 'CentralIngest', 
+            'Azure Ingest-Konfiguration unvollständig. Prüfen Sie AZURE_INGEST_* Umgebungsvariablen.',
+            {'missing': [k for k, v in {
+                'AZURE_INGEST_CLIENT_ID': client_id,
+                'AZURE_INGEST_CLIENT_SECRET': client_secret,
+                'AZURE_INGEST_TENANT_ID': azure_tenant_id,
+                'AZURE_INGEST_MAILBOX': mailbox
+            }.items() if not v]})
+        return {'status': 'error', 'message': 'Missing Azure configuration'}
+    
+    try:
+        credentials = (client_id, client_secret)
+        account = Account(
+            credentials,
+            tenant_id=azure_tenant_id,
+            auth_flow_type='credentials'
+        )
         
-        with tenant_context(tenant):
+        if not account.authenticate():
+            log_system_event('ERROR', 'CentralIngest', 
+                'Azure Service Principal Authentifizierung fehlgeschlagen.')
+            return {'status': 'error', 'message': 'Authentication failed'}
+        
+        mailbox_obj = account.mailbox(resource=mailbox)
+        inbox = mailbox_obj.inbox_folder()
+        
+        quarantine_folder = None
+        try:
+            quarantine_folder = mailbox_obj.get_folder(folder_name='Quarantine')
+        except Exception:
             try:
-                client_secret = decrypt_data(config.encrypted_client_secret).decode('utf-8')
-                
-                credentials = (config.client_id, client_secret)
-                token_backend = FileSystemTokenBackend(
-                    token_path=Path(settings.BASE_DIR) / 'data',
-                    token_filename=f'o365_token_{config.id}.txt'
-                )
-                
-                account = Account(
-                    credentials,
-                    tenant_id=config.tenant_id,
-                    token_backend=token_backend
-                )
-                
-                if not account.is_authenticated:
-                    log_system_event('WARNING', 'EmailPoller', 
-                        f"Account not authenticated: {config.name}. Manual auth required.")
-                    continue
-                
-                mailbox = account.mailbox(resource=config.target_mailbox)
-                folder = mailbox.get_folder(folder_name=config.target_folder)
-                
-                if config.last_sync:
-                    query = folder.new_query().on_attribute('receivedDateTime').greater(config.last_sync)
-                    messages = folder.get_messages(query=query, limit=50)
-                else:
-                    messages = folder.get_messages(limit=50)
-                
-                for message in messages:
-                    try:
-                        process_email_message(message, config)
-                    except Exception as e:
-                        log_system_event('ERROR', 'EmailPoller', 
-                            f"Failed to process email: {message.subject}",
-                            {'error': str(e)})
-                
-                config.last_sync = timezone.now()
-                config.save()
-                
-                log_system_event('INFO', 'EmailPoller', 
-                    f"Email polling complete for: {config.name}")
-                
+                quarantine_folder = mailbox_obj.create_child_folder('Quarantine')
+                log_system_event('INFO', 'CentralIngest', 'Quarantine-Ordner erstellt.')
             except Exception as e:
-                log_system_event('ERROR', 'EmailPoller', 
-                    f"Email polling failed for: {config.name}",
+                log_system_event('WARNING', 'CentralIngest', 
+                    f'Konnte Quarantine-Ordner nicht erstellen: {str(e)}')
+        
+        query = inbox.new_query().on_attribute('isRead').equals(False)
+        messages = inbox.get_messages(query=query, limit=50)
+        
+        processed = 0
+        quarantined = 0
+        
+        for message in messages:
+            try:
+                tenant = extract_tenant_from_recipients(message)
+                
+                if tenant:
+                    with tenant_context(tenant):
+                        process_email_message(message, tenant)
+                        message.mark_as_read()
+                        message.delete()
+                        processed += 1
+                        
+                        log_system_event('INFO', 'CentralIngest', 
+                            f'E-Mail verarbeitet für Mandant {tenant.code}: {message.subject}')
+                else:
+                    if quarantine_folder:
+                        message.move(quarantine_folder)
+                    message.mark_as_read()
+                    quarantined += 1
+                    
+                    log_system_event('WARNING', 'CentralIngest', 
+                        f'Kein gültiges Tenant-Token gefunden, E-Mail in Quarantäne: {message.subject}',
+                        {'recipients': [r.address for r in message.to + message.cc]})
+                        
+            except Exception as e:
+                log_system_event('ERROR', 'CentralIngest', 
+                    f'Fehler bei E-Mail-Verarbeitung: {message.subject}',
                     {'error': str(e)})
+                if quarantine_folder:
+                    try:
+                        message.move(quarantine_folder)
+                        message.mark_as_read()
+                    except Exception:
+                        pass
+                quarantined += 1
+        
+        log_system_event('INFO', 'CentralIngest', 
+            f'E-Mail-Ingest abgeschlossen: {processed} verarbeitet, {quarantined} in Quarantäne')
+        
+        return {'status': 'success', 'processed': processed, 'quarantined': quarantined}
+        
+    except Exception as e:
+        log_system_event('ERROR', 'CentralIngest', 
+            f'Zentraler E-Mail-Ingest fehlgeschlagen: {str(e)}',
+            {'error': str(e)})
+        return {'status': 'error', 'message': str(e)}
+
+
+@shared_task(bind=True, max_retries=3)
+def poll_email_inbox(self):
+    """
+    Kompatibilitäts-Wrapper für bestehende Celery Beat Schedules.
+    Ruft poll_central_inbox_graph auf.
     
-    return {'status': 'success'}
+    DEPRECATED: Bitte Celery Beat Schedule auf poll_central_inbox_graph umstellen.
+    """
+    log_system_event('INFO', 'CentralIngest', 
+        'poll_email_inbox aufgerufen (deprecated), leite an poll_central_inbox_graph weiter.')
+    return poll_central_inbox_graph()
 
 
-def process_email_message(message, config):
+def extract_tenant_from_recipients(message):
+    """
+    Extrahiert den Tenant anhand des Tokens in der Empfängeradresse.
+    
+    Sucht nach dem Pattern: upload.<token>@...
+    Prüft alle to_recipients und cc_recipients.
+    
+    Returns:
+        Tenant-Objekt oder None wenn kein gültiges Token gefunden.
+    """
+    token_pattern = re.compile(r'upload\.([a-f0-9-]+)@', re.IGNORECASE)
+    
+    all_recipients = list(message.to or []) + list(message.cc or [])
+    
+    for recipient in all_recipients:
+        email_address = recipient.address if hasattr(recipient, 'address') else str(recipient)
+        match = token_pattern.search(email_address)
+        
+        if match:
+            token = match.group(1)
+            try:
+                tenant = Tenant.objects.get(ingest_token=token, is_active=True)
+                return tenant
+            except Tenant.DoesNotExist:
+                log_system_event('WARNING', 'CentralIngest', 
+                    f'Unbekanntes Ingest-Token: {token}',
+                    {'email': email_address})
+                continue
+    
+    return None
+
+
+def process_email_message(message, tenant):
+    """
+    Verarbeitet eine einzelne E-Mail und erstellt Dokumente für den Mandanten.
+    
+    Args:
+        message: O365 Message-Objekt
+        tenant: Tenant-Objekt für die Zuordnung
+    """
     import pdfkit
     import bleach
     from django.utils.html import escape
-    from email.utils import formataddr
     
     email_archive_path = Path(settings.EMAIL_ARCHIVE_PATH)
     email_archive_path.mkdir(exist_ok=True)
@@ -1562,11 +1663,12 @@ def process_email_message(message, config):
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     subject_safe = "".join(c for c in message.subject if c.isalnum() or c in (' ', '-', '_'))[:50]
     
-    # SECURITY: E-Mail-Body für .eml Datei bereinigen (Text-only)
+    recipients = ', '.join([r.address for r in (message.to or [])])
+    
     safe_body = escape(message.body or '')
     
     eml_content = f"""From: {message.sender.address}
-To: {config.target_mailbox}
+To: {recipients}
 Subject: {message.subject}
 Date: {message.received}
 
@@ -1577,6 +1679,7 @@ Date: {message.received}
     eml_hash = calculate_sha256(eml_content.encode('utf-8'))
     
     eml_doc = Document.objects.create(
+        tenant=tenant,
         title=f"Email: {message.subject}",
         original_filename=f"{timestamp}_{subject_safe}.eml",
         file_extension='.eml',
@@ -1589,7 +1692,8 @@ Date: {message.received}
         metadata={
             'sender': message.sender.address,
             'received': str(message.received),
-            'has_attachments': message.has_attachments
+            'has_attachments': message.has_attachments,
+            'tenant_code': tenant.code
         }
     )
     
@@ -1645,6 +1749,7 @@ Date: {message.received}
         pdf_hash = calculate_sha256(pdf_content)
         
         Document.objects.create(
+            tenant=tenant,
             title=f"Email PDF: {message.subject}",
             original_filename=f"{timestamp}_{subject_safe}.pdf",
             file_extension='.pdf',
@@ -1654,11 +1759,11 @@ Date: {message.received}
             status='UNASSIGNED',
             source='EMAIL',
             sha256_hash=pdf_hash,
-            metadata={'parent_email_id': str(eml_doc.id)}
+            metadata={'parent_email_id': str(eml_doc.id), 'tenant_code': tenant.code}
         )
     except Exception as e:
-        log_system_event('WARNING', 'EmailPoller', 
-            f"Failed to convert email to PDF: {message.subject}",
+        log_system_event('WARNING', 'CentralIngest', 
+            f"PDF-Konvertierung fehlgeschlagen: {message.subject}",
             {'error': str(e)})
     
     if message.has_attachments:
@@ -1669,6 +1774,7 @@ Date: {message.received}
                 att_hash = calculate_sha256(att_content)
                 
                 Document.objects.create(
+                    tenant=tenant,
                     title=f"Attachment: {attachment.name}",
                     original_filename=attachment.name,
                     file_extension=Path(attachment.name).suffix,
@@ -1678,19 +1784,18 @@ Date: {message.received}
                     status='UNASSIGNED',
                     source='EMAIL',
                     sha256_hash=att_hash,
-                    metadata={'parent_email_id': str(eml_doc.id)}
+                    metadata={'parent_email_id': str(eml_doc.id), 'tenant_code': tenant.code}
                 )
             except Exception as e:
-                log_system_event('WARNING', 'EmailPoller', 
-                    f"Failed to process attachment: {attachment.name}",
+                log_system_event('WARNING', 'CentralIngest', 
+                    f"Anhang-Verarbeitung fehlgeschlagen: {attachment.name}",
                     {'error': str(e)})
     
-    # Aufgabe für E-Mail-Prüfung erstellen
     create_review_task(eml_doc, source='EMAIL')
     
-    log_system_event('INFO', 'EmailPoller', 
-        f"Processed email: {message.subject}",
-        {'document_id': str(eml_doc.id)})
+    log_system_event('INFO', 'CentralIngest', 
+        f"E-Mail verarbeitet: {message.subject}",
+        {'document_id': str(eml_doc.id), 'tenant': tenant.code})
 
 
 @shared_task(bind=True, max_retries=3)

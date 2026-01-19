@@ -8,7 +8,7 @@ from unfold.contrib.filters.admin import RangeDateFilter, DropdownFilter, Choice
 from .models import (
     Tenant, TenantUser,
     Department, CostCenter, Employee, DocumentType, Document, 
-    ProcessedFile, Task, EmailConfig, SystemLog, SystemSettings,
+    ProcessedFile, Task, SystemLog, SystemSettings,
     ImportedLeaveRequest, ImportedTimesheet,
     FileCategory, PersonnelFile, PersonnelFileEntry, DocumentVersion,
     AccessPermission, AuditLog, ScanJob, Tag, DocumentTag, MatchingRule
@@ -84,14 +84,37 @@ class TenantUserInline(TabularInline):
 
 @admin.register(Tenant)
 class TenantAdmin(ModelAdmin):
-    list_display = ['code', 'name', 'is_active_badge', 'user_count', 'created_at']
+    list_display = ['code', 'name', 'ingest_email', 'is_active_badge', 'user_count', 'created_at']
     list_filter = ['is_active']
-    search_fields = ['code', 'name']
+    search_fields = ['code', 'name', 'ingest_token']
     inlines = [TenantUserInline]
+    readonly_fields = ['ingest_token', 'ingest_email_display']
+    
+    fieldsets = (
+        ('Mandant', {
+            'fields': ('code', 'name', 'description', 'is_active')
+        }),
+        ('E-Mail-Ingest', {
+            'fields': ('ingest_token', 'ingest_email_display'),
+            'description': 'Dokumente an diese E-Mail-Adresse senden, um sie automatisch diesem Mandanten zuzuordnen.'
+        }),
+    )
     
     @display(description="Status", label={"Aktiv": "success", "Inaktiv": "danger"})
     def is_active_badge(self, obj):
         return "Aktiv" if obj.is_active else "Inaktiv"
+    
+    @display(description="Ingest-E-Mail")
+    def ingest_email(self, obj):
+        if obj.ingest_token:
+            return f"upload.{obj.ingest_token}@dms.cloud"
+        return "-"
+    
+    @display(description="Ingest-E-Mail-Adresse")
+    def ingest_email_display(self, obj):
+        if obj.ingest_token:
+            return f"upload.{obj.ingest_token}@dms.cloud"
+        return "Token wird beim Speichern automatisch generiert"
     
     def user_count(self, obj):
         return obj.users.count()
@@ -419,31 +442,6 @@ class TaskAdmin(ModelAdmin):
     def mark_as_open(self, request, queryset):
         queryset.update(status='OPEN', completed_at=None)
     mark_as_open.short_description = "Als offen markieren"
-
-
-@admin.register(EmailConfig)
-class EmailConfigAdmin(ModelAdmin):
-    list_display = ['name', 'target_mailbox', 'target_folder', 'is_active_badge', 'last_sync']
-    list_filter = ['is_active']
-    search_fields = ['name', 'target_mailbox']
-    readonly_fields = ['last_sync']
-    
-    @display(description="Status", label={"Aktiv": "success", "Inaktiv": "danger"})
-    def is_active_badge(self, obj):
-        return "Aktiv" if obj.is_active else "Inaktiv"
-    
-    fieldsets = (
-        ('Konfiguration', {
-            'fields': ('name', 'tenant_id', 'client_id', 'is_active')
-        }),
-        ('Postfach-Einstellungen', {
-            'fields': ('target_mailbox', 'target_folder')
-        }),
-        ('Status', {
-            'fields': ('last_sync',),
-            'classes': ('collapse',)
-        }),
-    )
 
 
 @admin.register(SystemLog)

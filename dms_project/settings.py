@@ -308,6 +308,11 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
+AZURE_INGEST_CLIENT_ID = os.environ.get('AZURE_INGEST_CLIENT_ID')
+AZURE_INGEST_CLIENT_SECRET = os.environ.get('AZURE_INGEST_CLIENT_SECRET')
+AZURE_INGEST_TENANT_ID = os.environ.get('AZURE_INGEST_TENANT_ID')
+AZURE_INGEST_MAILBOX = os.environ.get('AZURE_INGEST_MAILBOX', 'ingest@dms.cloud')
+
 SAGE_ARCHIVE_PATH = os.environ.get('SAGE_ARCHIVE_PATH', str(BASE_DIR / 'data' / 'sage_archive'))
 MANUAL_INPUT_PATH = os.environ.get('MANUAL_INPUT_PATH', str(BASE_DIR / 'data' / 'manual_input'))
 EMAIL_ARCHIVE_PATH = os.environ.get('EMAIL_ARCHIVE_PATH', str(BASE_DIR / 'data' / 'email_archive'))

@@ -33,11 +33,26 @@ class Tenant(models.Model):
     name = models.CharField(max_length=200, verbose_name="Mandantenname")
     description = models.TextField(blank=True, verbose_name="Beschreibung")
     is_active = models.BooleanField(default=True, verbose_name="Aktiv")
+    ingest_token = models.CharField(
+        max_length=64, 
+        unique=True, 
+        db_index=True,
+        null=True,
+        blank=True,
+        verbose_name="Ingest-Token",
+        help_text="Token für E-Mail-Routing (upload.<token>@dms.cloud)"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.code} - {self.name}"
+    
+    def save(self, *args, **kwargs):
+        if not self.ingest_token:
+            import secrets
+            self.ingest_token = secrets.token_hex(16)
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ['code']
@@ -321,26 +336,6 @@ class Task(models.Model):
 
     class Meta:
         ordering = ['-priority', 'due_date', '-created_at']
-
-
-class EmailConfig(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-    tenant_id = models.CharField(max_length=100)
-    client_id = models.CharField(max_length=100)
-    encrypted_client_secret = models.BinaryField(help_text="Fernet-encrypted client secret")
-    target_mailbox = models.EmailField(help_text="Email address to monitor")
-    target_folder = models.CharField(max_length=100, default='Inbox')
-    is_active = models.BooleanField(default=True)
-    last_sync = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"{self.name} - {self.target_mailbox}"
-
-    class Meta:
-        verbose_name = "Email Configuration"
-        verbose_name_plural = "Email Configurations"
 
 
 class SystemLog(models.Model):
