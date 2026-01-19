@@ -125,7 +125,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'mfa.middleware.MfaMiddleware',
+    'mfa.middleware.MFAEnforceMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -220,7 +220,8 @@ LOGGING = {
 }
 
 # MFA Settings (django-mfa3)
-MFA_FIDO2_RP_NAME = "Dokumentenmanagementsystem"
-MFA_FIDO2_RP_ID = os.environ.get('MFA_FIDO2_RP_ID', None)
-MFA_METHODS = ["FIDO2", "TOTP"]
-MFA_ENFORCE_MFA = True
+MFA_DOMAIN = os.environ.get('MFA_DOMAIN', os.environ.get('REPLIT_DEV_DOMAIN', 'localhost'))
+MFA_SITE_TITLE = "DMS - Dokumentenmanagementsystem"
+MFA_METHODS = ["FIDO2", "TOTP", "recovery"]
+MFA_FIDO2_USER_VERIFICATION = "preferred"
+MFA_MAX_KEYS_PER_ACCOUNT = 5
