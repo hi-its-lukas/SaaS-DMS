@@ -13,7 +13,27 @@ from django.utils import timezone
 from .models import Document, ProcessedFile, Employee, Task, EmailConfig, SystemLog, Tenant, ScanJob, MatchingRule
 from .encryption import encrypt_data, decrypt_data, calculate_sha256, encrypt_file, calculate_sha256_chunked, encrypt_file_streaming
 from .ocr import process_document_with_ocr, classify_document, extract_employee_info
+from .middleware import set_current_tenant, clear_tenant_context
 import re
+
+
+@contextmanager
+def tenant_context(tenant):
+    """
+    Setzt den Tenant-Kontext für den aktuellen Thread (wichtig für Celery Tasks).
+    Stellt sicher, dass der TenantAwareManager korrekte Filter anwendet.
+    
+    Usage:
+        with tenant_context(tenant):
+            # Code here will have tenant context set
+            # TenantAwareManager will filter correctly
+    """
+    if tenant:
+        set_current_tenant(tenant)
+    try:
+        yield
+    finally:
+        clear_tenant_context()
 
 
 def create_review_task(document, source='UNKNOWN'):
@@ -1000,60 +1020,62 @@ def _run_sage_scan(task_self):
         file_path, tenant_code = file_info
         tenant = tenant_cache[tenant_code]
         
-        try:
-            # OPTIMIZATION: Chunked Hash ohne volle Datei in RAM
-            file_hash = calculate_sha256_chunked(str(file_path))
-            
-            # Thread-safe Hash-Check im Memory-Cache (keine verschachtelten Locks!)
-            is_known = False
-            with hashes_lock:
-                known_hashes = known_hashes_by_tenant.get(tenant_code, set())
-                is_known = file_hash in known_hashes
-            
-            if is_known:
-                with counter_lock:
-                    already_processed_count += 1
-                return None
-            
-            # DB-Level Duplikat-Prüfung (race condition safety)
-            if ProcessedFile.objects.filter(tenant=tenant, sha256_hash=file_hash).exists():
-                with counter_lock:
-                    already_processed_count += 1
-                return None
-            
-            # Monatsordner extrahieren (vor Content-Laden für Split-Check)
-            month_folder = None
+        # SAAS FIX: Tenant-Kontext setzen, damit TenantAwareManager korrekt filtert
+        with tenant_context(tenant):
             try:
-                tenant_folder = sage_path / tenant_code
-                relative_path = file_path.relative_to(tenant_folder)
-                path_parts = relative_path.parts
-                if len(path_parts) >= 2 and month_folder_pattern.match(path_parts[0]):
-                    month_folder = path_parts[0]
-            except ValueError:
-                pass
-            
-            mime_type = get_mime_type(str(file_path))
-            
-            employee = None
-            status = 'UNASSIGNED'
-            needs_review = False
-            dm_result = None
-            is_personnel = False
-            doc_type = 'UNBEKANNT'
-            category = None
-            description = 'Unbekanntes Dokument'
-            
-            if file_path.suffix.lower() == '.pdf':
-                import fitz
-                try:
-                    pdf_doc = fitz.open(str(file_path))
-                    page_count = len(pdf_doc)
-                    pdf_doc.close()
-                except:
-                    page_count = 1
+                # OPTIMIZATION: Chunked Hash ohne volle Datei in RAM
+                file_hash = calculate_sha256_chunked(str(file_path))
                 
-                if page_count > 1:
-                    doc_type, is_personnel_type, _, _ = classify_sage_document(file_path.name)
+                # Thread-safe Hash-Check im Memory-Cache (keine verschachtelten Locks!)
+                is_known = False
+                with hashes_lock:
+                    known_hashes = known_hashes_by_tenant.get(tenant_code, set())
+                    is_known = file_hash in known_hashes
+                
+                if is_known:
+                    with counter_lock:
+                        already_processed_count += 1
+                    return None
+                
+                # DB-Level Duplikat-Prüfung (race condition safety)
+                if ProcessedFile.objects.filter(tenant=tenant, sha256_hash=file_hash).exists():
+                    with counter_lock:
+                        already_processed_count += 1
+                    return None
+                
+                # Monatsordner extrahieren (vor Content-Laden für Split-Check)
+                month_folder = None
+                try:
+                    tenant_folder = sage_path / tenant_code
+                    relative_path = file_path.relative_to(tenant_folder)
+                    path_parts = relative_path.parts
+                    if len(path_parts) >= 2 and month_folder_pattern.match(path_parts[0]):
+                        month_folder = path_parts[0]
+                except ValueError:
+                    pass
+                
+                mime_type = get_mime_type(str(file_path))
+                
+                employee = None
+                status = 'UNASSIGNED'
+                needs_review = False
+                dm_result = None
+                is_personnel = False
+                doc_type = 'UNBEKANNT'
+                category = None
+                description = 'Unbekanntes Dokument'
+                
+                if file_path.suffix.lower() == '.pdf':
+                    import fitz
+                    try:
+                        pdf_doc = fitz.open(str(file_path))
+                        page_count = len(pdf_doc)
+                        pdf_doc.close()
+                    except:
+                        page_count = 1
+                    
+                    if page_count > 1:
+                        doc_type, is_personnel_type, _, _ = classify_sage_document(file_path.name)
                     if is_personnel_type:
                         split_output_dir = Path(settings.BASE_DIR) / 'data' / 'split_temp' / tenant_code
                         split_results = split_pdf_by_datamatrix(str(file_path), str(split_output_dir))
@@ -1473,53 +1495,57 @@ def poll_email_inbox(self):
     configs = EmailConfig.objects.filter(is_active=True)
     
     for config in configs:
-        try:
-            client_secret = decrypt_data(config.encrypted_client_secret).decode('utf-8')
-            
-            credentials = (config.client_id, client_secret)
-            token_backend = FileSystemTokenBackend(
-                token_path=Path(settings.BASE_DIR) / 'data',
-                token_filename=f'o365_token_{config.id}.txt'
-            )
-            
-            account = Account(
-                credentials,
-                tenant_id=config.tenant_id,
-                token_backend=token_backend
-            )
-            
-            if not account.is_authenticated:
-                log_system_event('WARNING', 'EmailPoller', 
-                    f"Account not authenticated: {config.name}. Manual auth required.")
-                continue
-            
-            mailbox = account.mailbox(resource=config.target_mailbox)
-            folder = mailbox.get_folder(folder_name=config.target_folder)
-            
-            if config.last_sync:
-                query = folder.new_query().on_attribute('receivedDateTime').greater(config.last_sync)
-                messages = folder.get_messages(query=query, limit=50)
-            else:
-                messages = folder.get_messages(limit=50)
-            
-            for message in messages:
-                try:
-                    process_email_message(message, config)
-                except Exception as e:
-                    log_system_event('ERROR', 'EmailPoller', 
-                        f"Failed to process email: {message.subject}",
-                        {'error': str(e)})
-            
-            config.last_sync = timezone.now()
-            config.save()
-            
-            log_system_event('INFO', 'EmailPoller', 
-                f"Email polling complete for: {config.name}")
-            
-        except Exception as e:
-            log_system_event('ERROR', 'EmailPoller', 
-                f"Email polling failed for: {config.name}",
-                {'error': str(e)})
+        # SAAS FIX: Tenant-Kontext setzen, falls Config einem Tenant gehört
+        tenant = getattr(config, 'tenant', None)
+        
+        with tenant_context(tenant):
+            try:
+                client_secret = decrypt_data(config.encrypted_client_secret).decode('utf-8')
+                
+                credentials = (config.client_id, client_secret)
+                token_backend = FileSystemTokenBackend(
+                    token_path=Path(settings.BASE_DIR) / 'data',
+                    token_filename=f'o365_token_{config.id}.txt'
+                )
+                
+                account = Account(
+                    credentials,
+                    tenant_id=config.tenant_id,
+                    token_backend=token_backend
+                )
+                
+                if not account.is_authenticated:
+                    log_system_event('WARNING', 'EmailPoller', 
+                        f"Account not authenticated: {config.name}. Manual auth required.")
+                    continue
+                
+                mailbox = account.mailbox(resource=config.target_mailbox)
+                folder = mailbox.get_folder(folder_name=config.target_folder)
+                
+                if config.last_sync:
+                    query = folder.new_query().on_attribute('receivedDateTime').greater(config.last_sync)
+                    messages = folder.get_messages(query=query, limit=50)
+                else:
+                    messages = folder.get_messages(limit=50)
+                
+                for message in messages:
+                    try:
+                        process_email_message(message, config)
+                    except Exception as e:
+                        log_system_event('ERROR', 'EmailPoller', 
+                            f"Failed to process email: {message.subject}",
+                            {'error': str(e)})
+                
+                config.last_sync = timezone.now()
+                config.save()
+                
+                log_system_event('INFO', 'EmailPoller', 
+                    f"Email polling complete for: {config.name}")
+                
+            except Exception as e:
+                log_system_event('ERROR', 'EmailPoller', 
+                    f"Email polling failed for: {config.name}",
+                    {'error': str(e)})
     
     return {'status': 'success'}
 

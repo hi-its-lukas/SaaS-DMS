@@ -1,0 +1,80 @@
+Hier sind die notwendigen Änderungen für dms/tasks.py zusammengefasst, um die Celery-Worker mandantenfähig (Multi-Tenant-Aware) zu machen.
+
+Da Celery-Worker keine Requests verarbeiten, fehlt ihnen der Tenant-Kontext im Thread-Local-Storage. Dies führt dazu, dass der TenantAwareManager entweder gar keine Daten liefert (bei strikter Einstellung) oder alle Daten (bei permissiver Einstellung), was zu falschen Zuordnungen oder Sicherheitslücken führen kann.
+
+Zusammenfassung der Änderungen für Replit
+Datei: dms/tasks.py
+
+1. Imports hinzufügen Wir benötigen die Funktionen aus der Middleware, um den Kontext manuell zu setzen.
+
+Python
+
+# Oben bei den Imports hinzufügen:
+from django.context_managers import nullcontext
+from dms.middleware import set_current_tenant, clear_tenant_context
+2. Context Manager Helper erstellen Füge diese Hilfsfunktion am Anfang der Datei (nach den Imports) hinzu. Sie sorgt dafür, dass der Tenant für einen Code-Block gesetzt und danach sauber wieder entfernt wird.
+
+Python
+
+@contextmanager
+def tenant_context(tenant):
+    """
+    Setzt den Tenant-Kontext für den aktuellen Thread (wichtig für Celery Tasks).
+    Stellt sicher, dass der TenantAwareManager korrekte Filter anwendet.
+    """
+    if tenant:
+        set_current_tenant(tenant)
+    try:
+        yield
+    finally:
+        clear_tenant_context()
+3. scan_sage_archive anpassen In der Funktion _run_sage_scan (Hilfsfunktion von scan_sage_archive) muss die innere Logik von process_single_file in den Context-Manager gewickelt werden.
+
+Suche die innere Funktion def process_single_file(file_info): und ändere sie wie folgt:
+
+Python
+
+    def process_single_file(file_info):
+        """Verarbeitet eine einzelne Datei - thread-safe"""
+        nonlocal processed_count, error_count, personnel_docs, company_docs, already_processed_count
+        
+        file_path, tenant_code = file_info
+        tenant = tenant_cache[tenant_code]
+        
+        # SAAS FIX: Kontext setzen, damit Manager (z.B. MatchingRule) korrekt filtern
+        with tenant_context(tenant):
+            try:
+                # ... (hier beginnt der bestehende Code: file_hash = calculate_sha256_chunked...)
+                # Der gesamte restliche Block der Funktion muss eingerückt werden!
+                
+                # OPTIMIZATION: Chunked Hash ohne volle Datei in RAM
+                file_hash = calculate_sha256_chunked(str(file_path))
+                
+                # ... (Rest der Funktion unverändert, nur eingerückt) ...
+4. poll_email_inbox anpassen Beim Abrufen von E-Mails muss der Kontext auf den Mandanten gesetzt werden, zu dem die E-Mail-Konfiguration gehört.
+
+Suche die Schleife for config in configs: in poll_email_inbox und passe sie an:
+
+Python
+
+    for config in configs:
+        # SAAS FIX: Tenant-Kontext setzen, falls Config einem Tenant gehört
+        # Wir nutzen getattr/check, falls config global ist oder das Feld noch fehlt
+        tenant = getattr(config, 'tenant', None)
+        
+        with tenant_context(tenant):
+            try:
+                # ... (hier beginnt der bestehende Code: client_secret = decrypt_data...)
+                # Der gesamte Block innerhalb der Schleife muss eingerückt werden
+Erklärung für den Prompt / Replit
+Du kannst Replit folgende Anweisung geben:
+
+"Bitte aktualisiere dms/tasks.py, um die Mandantenfähigkeit in Hintergrund-Tasks sicherzustellen.
+
+Importiere set_current_tenant und clear_tenant_context aus dms.middleware.
+
+Implementiere einen tenant_context Context Manager.
+
+Wende diesen Context Manager in scan_sage_archive (innerhalb von process_single_file) an, sobald das tenant-Objekt verfügbar ist.
+
+Wende ihn ebenfalls in poll_email_inbox an, indem du auf config.tenant zugreifst. Dies verhindert, dass Hintergrundprozesse versehentlich Daten anderer Mandanten sehen oder erstellen."

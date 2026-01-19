@@ -29,6 +29,7 @@ Das System verwendet eine zentrale URL (z.B. `app.dms.cloud`) für alle Kunden m
 - **TenantAwareManager**: Automatische Filterung aller Queries nach `tenant`
 - **Superuser-Bypass**: `is_superuser=True` sieht alle Mandanten (Support)
 - **all_objects Manager**: Ungefilterter Zugriff für Migrations/Admin
+- **tenant_context**: Context Manager für Celery-Tasks zur Thread-lokalen Tenant-Isolierung
 
 ### Azure Blob Storage
 
