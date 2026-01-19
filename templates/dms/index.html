@@ -359,37 +359,122 @@
 {% endif %}
 
 {% if recent_scans %}
-<div class="card" style="margin-top: 24px;">
-    <h2>Letzte Scan-Aufträge</h2>
-    <table style="margin-top: 16px;">
-        <thead>
-            <tr>
-                <th>Quelle</th>
-                <th>Status</th>
-                <th>Neu verarbeitet</th>
-                <th>Bereits vorhanden</th>
-                <th>Fehler</th>
-                <th>Datum</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for scan in recent_scans %}
-            <tr>
-                <td>{{ scan.get_source_display }}</td>
-                <td>
-                    <span class="badge {% if scan.status == 'COMPLETED' %}badge-success{% elif scan.status == 'FAILED' %}badge-error{% else %}badge-warning{% endif %}">
-                        {{ scan.get_status_display }}
+<div style="margin-top: 24px;">
+    <h2 style="margin-bottom: 16px; font-size: 1.25rem; font-weight: 600;">Letzte Scan-Aufträge</h2>
+    <div class="scan-jobs-grid">
+        {% for scan in recent_scans %}
+        <div class="scan-job-card {% if scan.status == 'COMPLETED' %}scan-success{% elif scan.status == 'FAILED' %}scan-error{% else %}scan-pending{% endif %}">
+            <div class="scan-job-header">
+                <div class="scan-job-icon">
+                    <span class="material-icons">
+                        {% if scan.source == 'SAGE' %}cloud_sync
+                        {% elif scan.source == 'MANUAL' %}scanner
+                        {% elif scan.source == 'EMAIL' %}email
+                        {% else %}folder{% endif %}
                     </span>
-                </td>
-                <td>{{ scan.processed_files }}</td>
-                <td>{{ scan.skipped_files }}</td>
-                <td>{{ scan.error_files }}</td>
-                <td>{{ scan.started_at|date:"d.m.Y H:i" }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                </div>
+                <span class="scan-job-status">{{ scan.get_status_display }}</span>
+            </div>
+            <div class="scan-job-title">{{ scan.get_source_display }}</div>
+            <div class="scan-job-date">{{ scan.started_at|date:"d.m.Y H:i" }}</div>
+            <div class="scan-job-stats">
+                <div class="scan-stat">
+                    <span class="scan-stat-value">{{ scan.processed_files }}</span>
+                    <span class="scan-stat-label">Neu</span>
+                </div>
+                <div class="scan-stat">
+                    <span class="scan-stat-value">{{ scan.skipped_files }}</span>
+                    <span class="scan-stat-label">Vorhanden</span>
+                </div>
+                <div class="scan-stat">
+                    <span class="scan-stat-value {% if scan.error_files > 0 %}scan-stat-error{% endif %}">{{ scan.error_files }}</span>
+                    <span class="scan-stat-label">Fehler</span>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
 </div>
+<style>
+.scan-jobs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+}
+.scan-job-card {
+    background: var(--card-background);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.scan-job-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.scan-job-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.scan-job-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--primary-bg);
+    color: var(--primary);
+}
+.scan-success .scan-job-icon { background: var(--success-bg); color: var(--success); }
+.scan-error .scan-job-icon { background: var(--error-bg); color: var(--error); }
+.scan-pending .scan-job-icon { background: var(--warning-bg); color: var(--warning); }
+.scan-job-status {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--success-bg);
+    color: var(--success);
+}
+.scan-error .scan-job-status { background: var(--error-bg); color: var(--error); }
+.scan-pending .scan-job-status { background: var(--warning-bg); color: var(--warning); }
+.scan-job-title {
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 4px;
+}
+.scan-job-date {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+.scan-job-stats {
+    display: flex;
+    gap: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+.scan-stat {
+    flex: 1;
+    text-align: center;
+}
+.scan-stat-value {
+    display: block;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text);
+}
+.scan-stat-error { color: var(--error) !important; }
+.scan-stat-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+</style>
 {% endif %}
 
 <div class="stats" style="margin-top: 24px;">
