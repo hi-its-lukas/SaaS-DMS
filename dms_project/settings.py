@@ -5,7 +5,6 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY: SECRET_KEY muss in Production gesetzt sein
 _secret_key = os.environ.get('DJANGO_SECRET_KEY', '')
 if not _secret_key:
     if os.environ.get('DEBUG', 'False').lower() == 'true':
@@ -18,27 +17,26 @@ SECRET_KEY = _secret_key
 
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-# SECURITY: ALLOWED_HOSTS muss in Production explizit gesetzt sein
 _allowed_hosts = os.environ.get('ALLOWED_HOSTS', '')
 if _allowed_hosts:
     ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts.split(',') if h.strip()]
 elif DEBUG:
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.replit.dev', '.repl.co']
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.replit.dev', '.repl.co', '*']
 else:
     print("FEHLER: ALLOWED_HOSTS muss in Production gesetzt sein!")
     sys.exit(1)
 
-# CSRF trusted origins - include custom domains from environment
 _csrf_origins = ['https://*.replit.dev', 'https://*.repl.co']
 if os.environ.get('CSRF_TRUSTED_ORIGINS'):
     _csrf_origins.extend(os.environ.get('CSRF_TRUSTED_ORIGINS').split(','))
 CSRF_TRUSTED_ORIGINS = _csrf_origins
 
-# Allow embedding in iframes on same origin (for PDF preview)
 X_FRAME_OPTIONS = 'SAMEORIGIN'
 
 INSTALLED_APPS = [
-    'jazzmin',
+    'unfold',
+    'unfold.contrib.filters',
+    'unfold.contrib.forms',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -46,95 +44,167 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django_celery_beat',
+    'storages',
     'mfa',
     'dms',
 ]
 
-JAZZMIN_SETTINGS = {
-    "site_title": "DMS Admin",
-    "site_header": "Dokumentenmanagementsystem",
-    "site_brand": "DMS",
-    "site_logo": "admin/img/dms-logo.svg",
-    "site_logo_classes": "brand-image",
-    "login_logo": None,
-    "welcome_sign": "Willkommen im DMS",
-    "copyright": "Hengl Bedachungen",
-    "search_model": ["dms.Document", "dms.Employee"],
-    "user_avatar": None,
-    "topmenu_links": [
-        {"name": "Dashboard", "url": "/", "permissions": ["auth.view_user"]},
-        {"name": "Dokumente", "url": "/documents/", "permissions": ["auth.view_user"]},
-        {"app": "dms"},
-    ],
-    "show_sidebar": True,
-    "navigation_expanded": True,
-    "hide_apps": [],
-    "hide_models": [],
-    "order_with_respect_to": ["auth", "dms", "django_celery_beat"],
-    "icons": {
-        "auth": "fas fa-users-cog",
-        "auth.user": "fas fa-user",
-        "auth.Group": "fas fa-users",
-        "dms.Document": "fas fa-file-alt",
-        "dms.Employee": "fas fa-user-tie",
-        "dms.Department": "fas fa-building",
-        "dms.DocumentType": "fas fa-tags",
-        "dms.PersonnelFile": "fas fa-folder-open",
-        "dms.Tenant": "fas fa-sitemap",
-        "dms.Tag": "fas fa-tag",
-        "dms.MatchingRule": "fas fa-magic",
-        "dms.ScanJob": "fas fa-sync",
-        "dms.SystemSettings": "fas fa-cogs",
-        "dms.SystemLog": "fas fa-list-alt",
-        "django_celery_beat": "fas fa-clock",
-        "django_celery_beat.PeriodicTask": "fas fa-tasks",
-        "django_celery_beat.IntervalSchedule": "fas fa-stopwatch",
-        "django_celery_beat.CrontabSchedule": "fas fa-calendar-alt",
-        "django_celery_beat.ClockedSchedule": "fas fa-bell",
-        "django_celery_beat.SolarSchedule": "fas fa-sun",
+UNFOLD = {
+    "SITE_TITLE": "DMS",
+    "SITE_HEADER": "Dokumentenmanagementsystem",
+    "SITE_SYMBOL": "description",
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": True,
+    "ENVIRONMENT": "dms_project.settings.environment_callback",
+    "DASHBOARD_CALLBACK": "dms.admin.dashboard_callback",
+    "COLORS": {
+        "primary": {
+            "50": "#e6f5ed",
+            "100": "#b3e0c9",
+            "200": "#80cba6",
+            "300": "#4db682",
+            "400": "#26a66a",
+            "500": "#007e45",
+            "600": "#00713e",
+            "700": "#006236",
+            "800": "#00532e",
+            "900": "#003d22",
+            "950": "#002915",
+        },
     },
-    "default_icon_parents": "fas fa-chevron-circle-right",
-    "default_icon_children": "fas fa-circle",
-    "related_modal_active": True,
-    "use_google_fonts_cdn": True,
-    "show_ui_builder": False,
-    "changeform_format": "horizontal_tabs",
-    "changeform_format_overrides": {"auth.user": "collapsible", "auth.group": "vertical_tabs"},
-    "language_chooser": False,
-    "custom_css": "admin/css/custom.css",
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": True,
+        "navigation": [
+            {
+                "title": "Dashboard",
+                "separator": False,
+                "items": [
+                    {
+                        "title": "Dashboard",
+                        "icon": "dashboard",
+                        "link": "/",
+                    },
+                ],
+            },
+            {
+                "title": "Dokumentenverwaltung",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Dokumente",
+                        "icon": "description",
+                        "link": "/admin/dms/document/",
+                    },
+                    {
+                        "title": "Personalakten",
+                        "icon": "folder_shared",
+                        "link": "/admin/dms/personnelfile/",
+                    },
+                    {
+                        "title": "Mitarbeiter",
+                        "icon": "badge",
+                        "link": "/admin/dms/employee/",
+                    },
+                ],
+            },
+            {
+                "title": "Stammdaten",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Mandanten",
+                        "icon": "domain",
+                        "link": "/admin/dms/tenant/",
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                    {
+                        "title": "Abteilungen",
+                        "icon": "apartment",
+                        "link": "/admin/dms/department/",
+                    },
+                    {
+                        "title": "Kostenstellen",
+                        "icon": "account_balance",
+                        "link": "/admin/dms/costcenter/",
+                    },
+                    {
+                        "title": "Dokumenttypen",
+                        "icon": "category",
+                        "link": "/admin/dms/documenttype/",
+                    },
+                    {
+                        "title": "Aktenkategorien",
+                        "icon": "folder",
+                        "link": "/admin/dms/filecategory/",
+                    },
+                ],
+            },
+            {
+                "title": "System",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Benutzer",
+                        "icon": "person",
+                        "link": "/admin/auth/user/",
+                    },
+                    {
+                        "title": "Gruppen",
+                        "icon": "group",
+                        "link": "/admin/auth/group/",
+                    },
+                    {
+                        "title": "Systemeinstellungen",
+                        "icon": "settings",
+                        "link": "/admin/dms/systemsettings/",
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                    {
+                        "title": "Systemprotokolle",
+                        "icon": "list_alt",
+                        "link": "/admin/dms/systemlog/",
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                    {
+                        "title": "Scan-Aufträge",
+                        "icon": "sync",
+                        "link": "/admin/dms/scanjob/",
+                    },
+                ],
+            },
+        ],
+    },
+    "TABS": [
+        {
+            "models": ["dms.document"],
+            "items": [
+                {
+                    "title": "Alle Dokumente",
+                    "link": "/admin/dms/document/",
+                },
+                {
+                    "title": "Inbox",
+                    "link": "/admin/dms/document/?status__exact=UNASSIGNED",
+                },
+                {
+                    "title": "Archiviert",
+                    "link": "/admin/dms/document/?status__exact=ARCHIVED",
+                },
+            ],
+        },
+    ],
 }
 
-JAZZMIN_UI_TWEAKS = {
-    "navbar_small_text": False,
-    "footer_small_text": False,
-    "body_small_text": False,
-    "brand_small_text": False,
-    "brand_colour": "navbar-primary",
-    "accent": "accent-primary",
-    "navbar": "navbar-white navbar-light",
-    "no_navbar_border": False,
-    "navbar_fixed": True,
-    "layout_boxed": False,
-    "footer_fixed": False,
-    "sidebar_fixed": True,
-    "sidebar": "sidebar-dark-primary",
-    "sidebar_nav_small_text": False,
-    "sidebar_disable_expand": False,
-    "sidebar_nav_child_indent": False,
-    "sidebar_nav_compact_style": False,
-    "sidebar_nav_legacy_style": False,
-    "sidebar_nav_flat_style": False,
-    "theme": "default",
-    "dark_mode_theme": None,
-    "button_classes": {
-        "primary": "btn-primary",
-        "secondary": "btn-secondary",
-        "info": "btn-info",
-        "warning": "btn-warning",
-        "danger": "btn-danger",
-        "success": "btn-success"
-    }
-}
+
+def environment_callback(request):
+    """
+    Callback to display environment badge in admin header.
+    """
+    if DEBUG:
+        return ["Development", "warning"]
+    return ["Production", "success"]
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -143,6 +213,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'dms.middleware.TenantMiddleware',
     'mfa.middleware.MFAEnforceMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -191,14 +262,41 @@ LOGOUT_REDIRECT_URL = '/login/'
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
-STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
-}
+
+AZURE_STORAGE_ENABLED = os.environ.get('AZURE_STORAGE_ACCOUNT_NAME') is not None
+
+if AZURE_STORAGE_ENABLED:
+    AZURE_ACCOUNT_NAME = os.environ.get('AZURE_STORAGE_ACCOUNT_NAME')
+    AZURE_ACCOUNT_KEY = os.environ.get('AZURE_STORAGE_ACCOUNT_KEY')
+    AZURE_CONTAINER = os.environ.get('AZURE_STORAGE_CONTAINER', 'documents')
+    AZURE_CUSTOM_DOMAIN = os.environ.get('AZURE_STORAGE_CUSTOM_DOMAIN', None)
+    
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.azure_storage.AzureStorage",
+            "OPTIONS": {
+                "account_name": AZURE_ACCOUNT_NAME,
+                "account_key": AZURE_ACCOUNT_KEY,
+                "azure_container": AZURE_CONTAINER,
+                "custom_domain": AZURE_CUSTOM_DOMAIN,
+                "expiration_secs": 3600,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+else:
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -237,7 +335,6 @@ LOGGING = {
     },
 }
 
-# MFA Settings (django-mfa3)
 MFA_DOMAIN = os.environ.get('MFA_DOMAIN', os.environ.get('REPLIT_DEV_DOMAIN', 'localhost'))
 MFA_SITE_TITLE = "DMS - Dokumentenmanagementsystem"
 MFA_METHODS = ["FIDO2", "TOTP", "recovery"]

@@ -2,6 +2,29 @@ import uuid
 from django.db import models
 from django.contrib.auth.models import User, Group
 from django.utils import timezone
+from dms.managers import TenantAwareManager, TenantAwareManagerAllowNull
+
+
+def document_upload_path(instance, filename):
+    """
+    Generate storage path for documents: tenant_code/year/month/uuid_filename
+    Ensures tenant isolation and organized structure for Azure Blob Storage.
+    """
+    import datetime
+    now = datetime.datetime.now()
+    tenant_code = instance.tenant.code if instance.tenant else 'global'
+    return f"documents/{tenant_code}/{now.year}/{now.month:02d}/{instance.id}_{filename}"
+
+
+def version_upload_path(instance, filename):
+    """
+    Generate storage path for document versions.
+    """
+    import datetime
+    now = datetime.datetime.now()
+    doc = instance.document
+    tenant_code = doc.tenant.code if doc.tenant else 'global'
+    return f"versions/{tenant_code}/{now.year}/{now.month:02d}/{instance.id}_{filename}"
 
 
 class Tenant(models.Model):
@@ -39,9 +62,12 @@ class TenantUser(models.Model):
 
 class Department(models.Model):
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='departments', null=True, blank=True)
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = TenantAwareManagerAllowNull()
+    all_objects = models.Manager()
 
     def __str__(self):
         return self.name
@@ -60,6 +86,9 @@ class CostCenter(models.Model):
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = TenantAwareManagerAllowNull()
+    all_objects = models.Manager()
 
     def __str__(self):
         return f"{self.code} - {self.name}"
@@ -88,6 +117,9 @@ class Employee(models.Model):
     is_active = models.BooleanField(default=True, verbose_name="Aktiv")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = TenantAwareManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return f"{self.employee_id} - {self.first_name} {self.last_name}"
@@ -122,6 +154,9 @@ class DocumentType(models.Model):
         help_text="Zuordnung zum Aktenplan - Dokumente dieses Typs werden automatisch in diese Unterakte einsortiert"
     )
 
+    objects = TenantAwareManagerAllowNull()
+    all_objects = models.Manager()
+
     def __str__(self):
         return self.name
 
@@ -153,7 +188,13 @@ class Document(models.Model):
     original_filename = models.CharField(max_length=255)
     file_extension = models.CharField(max_length=20)
     mime_type = models.CharField(max_length=100, blank=True)
-    encrypted_content = models.BinaryField(help_text="Fernet-encrypted file content")
+    file = models.FileField(
+        upload_to=document_upload_path,
+        blank=True,
+        null=True,
+        verbose_name="Datei",
+        help_text="Dokument-Datei (Azure Blob Storage in Production)"
+    )
     file_size = models.PositiveIntegerField(default=0)
     
     document_type = models.ForeignKey(DocumentType, on_delete=models.SET_NULL, null=True, blank=True)
@@ -207,6 +248,9 @@ class Document(models.Model):
             return f"{self.period_month:02d}/{self.period_year}"
         return "-"
 
+    objects = TenantAwareManager()
+    all_objects = models.Manager()
+
     class Meta:
         ordering = ['-created_at']
         permissions = [
@@ -221,6 +265,9 @@ class ProcessedFile(models.Model):
     original_path = models.CharField(max_length=500)
     processed_at = models.DateTimeField(auto_now_add=True)
     document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True)
+
+    objects = TenantAwareManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return f"{self.sha256_hash[:16]}... - {self.original_path}"
@@ -451,6 +498,9 @@ class ImportedLeaveRequest(models.Model):
     """Tracks imported leave requests from Sage Cloud to prevent duplicates"""
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='leave_requests', null=True, blank=True)
     sage_request_id = models.CharField(max_length=100, verbose_name="Sage Anfrage-ID")
+    
+    objects = TenantAwareManager()
+    all_objects = models.Manager()
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_requests')
     document = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True)
     
@@ -480,6 +530,9 @@ class ImportedTimesheet(models.Model):
     """Tracks imported monthly timesheets from Sage Cloud"""
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='timesheets', null=True, blank=True)
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='timesheets')
+    
+    objects = TenantAwareManager()
+    all_objects = models.Manager()
     document = models.ForeignKey('Document', on_delete=models.SET_NULL, null=True, blank=True)
     
     year = models.PositiveIntegerField(verbose_name="Jahr")
@@ -505,6 +558,9 @@ class FileCategory(models.Model):
     """Aktenplan - Kategorien mit Aufbewahrungsfristen (wie d.3 one)"""
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='file_categories', null=True, blank=True)
     code = models.CharField(max_length=20, verbose_name="Aktenzeichen")
+    
+    objects = TenantAwareManagerAllowNull()
+    all_objects = models.Manager()
     name = models.CharField(max_length=200, verbose_name="Bezeichnung")
     description = models.TextField(blank=True, verbose_name="Beschreibung")
     parent = models.ForeignKey(
@@ -560,6 +616,10 @@ class PersonnelFile(models.Model):
     """Personalakte - Container für alle Dokumente eines Mitarbeiters"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='personnel_files', null=True, blank=True)
+    
+    objects = TenantAwareManager()
+    all_objects = models.Manager()
+    
     employee = models.OneToOneField(
         Employee, 
         on_delete=models.CASCADE, 
@@ -677,7 +737,12 @@ class DocumentVersion(models.Model):
     )
     
     version_number = models.PositiveIntegerField(verbose_name="Versionsnummer")
-    encrypted_content = models.BinaryField(verbose_name="Verschlüsselter Inhalt")
+    file = models.FileField(
+        upload_to=version_upload_path,
+        blank=True,
+        null=True,
+        verbose_name="Datei"
+    )
     file_size = models.PositiveIntegerField(default=0, verbose_name="Dateigröße")
     sha256_hash = models.CharField(max_length=64, verbose_name="SHA-256 Hash")
     
@@ -871,6 +936,10 @@ class AuditLog(models.Model):
 class Tag(models.Model):
     """Paperless-ngx-style Tags für Dokumentenkategorisierung"""
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='tags', null=True, blank=True)
+    
+    objects = TenantAwareManagerAllowNull()
+    all_objects = models.Manager()
+    
     name = models.CharField(max_length=100, verbose_name="Name")
     color = models.CharField(max_length=7, default="#3B82F6", verbose_name="Farbe",
                             help_text="Hex-Farbcode (z.B. #3B82F6)")
@@ -920,6 +989,10 @@ class MatchingRule(models.Model):
     ]
     
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='matching_rules', null=True, blank=True)
+    
+    objects = TenantAwareManager()
+    all_objects = models.Manager()
+    
     name = models.CharField(max_length=200, verbose_name="Regelname")
     is_active = models.BooleanField(default=True, verbose_name="Aktiv")
     priority = models.IntegerField(default=0, verbose_name="Priorität",

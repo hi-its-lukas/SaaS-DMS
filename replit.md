@@ -1,10 +1,58 @@
-# Dokumentenmanagementsystem (DMS)
+# Dokumentenmanagementsystem (DMS) - SaaS Edition
 
-Ein produktionsreifes Django-basiertes Dokumentenmanagementsystem für HR- und Unternehmensabläufe mit Sage HR Cloud und Microsoft 365 Integration.
+Ein produktionsreifes Django-basiertes Dokumentenmanagementsystem für HR- und Unternehmensabläufe mit Sage HR Cloud und Microsoft 365 Integration. **Jetzt als mandantenfähige SaaS-Lösung mit Azure Blob Storage.**
 
 ## Übersicht
 
-Dieses DMS bietet verschlüsselte Dokumentenspeicherung, Multi-Kanal-Eingabeverarbeitung, Sage Cloud Synchronisation und Microsoft 365 E-Mail-Integration. Alle Dokumente werden mit Fernet-Verschlüsselung vor der Speicherung verschlüsselt.
+Dieses DMS bietet sichere Dokumentenspeicherung in Azure Blob Storage, Multi-Kanal-Eingabeverarbeitung, Sage Cloud Synchronisation und Microsoft 365 E-Mail-Integration.
+
+## SaaS-Architektur
+
+### Multi-Tenancy (Single URL)
+
+Das System verwendet eine zentrale URL (z.B. `app.dms.cloud`) für alle Kunden mit automatischer Mandantenisolierung:
+
+- **TenantMiddleware** (`dms/middleware.py`): Erkennt den Mandanten anhand des eingeloggten Benutzers
+- **TenantAwareManager** (`dms/managers.py`): Filtert QuerySets automatisch nach Mandant
+- **Thread-Local Storage**: Mandanten-Kontext wird request-übergreifend gespeichert
+
+### Rollenmodell
+
+| Rolle | Zugriff | Beschreibung |
+|-------|---------|--------------|
+| **Root-Admin** (Superuser) | `/admin/` | Voller Zugriff, globale Ansicht aller Mandanten |
+| **Tenant-Admin** | `/admin/` (gefiltert) | Verwaltet nur eigene Mandantendaten |
+| **Benutzer** | App-Views | Sieht nur Dokumente des eigenen Mandanten |
+
+### Datenbank-Sicherheit
+
+- **TenantAwareManager**: Automatische Filterung aller Queries nach `tenant`
+- **Superuser-Bypass**: `is_superuser=True` sieht alle Mandanten (Support)
+- **all_objects Manager**: Ungefilterter Zugriff für Migrations/Admin
+
+### Azure Blob Storage
+
+Dokumente werden jetzt in Azure Blob Storage gespeichert statt als BinaryField in der DB:
+
+```python
+# settings.py Konfiguration
+AZURE_STORAGE_ACCOUNT_NAME = "..."
+AZURE_STORAGE_ACCOUNT_KEY = "..."
+AZURE_STORAGE_CONTAINER = "documents"
+```
+
+**Speicherpfad-Struktur:**
+```
+documents/{tenant_code}/{year}/{month}/{uuid}_{filename}
+```
+
+### Admin-Interface (django-unfold)
+
+Das modernisierte Admin-Interface bietet:
+- **Sage-Grün Theme** (Primärfarbe: #007e45)
+- **Status-Badges** für alle relevanten Felder
+- **Dropdown-Filter** mit Datumsbereich-Unterstützung
+- **Dashboard** mit KPI-Übersicht
 
 ## Projektstruktur
 
@@ -15,10 +63,12 @@ dms_project/           # Django-Projekteinstellungen
   └── urls.py          # URL-Routing
 
 dms/                   # Hauptanwendung
-  ├── models.py        # Datenbankmodelle
+  ├── models.py        # Datenbankmodelle mit TenantAwareManager
   ├── views.py         # Web-Views
   ├── tasks.py         # Celery-Hintergrundaufgaben
-  ├── admin.py         # Django-Admin-Konfiguration
+  ├── admin.py         # Django-Unfold Admin-Konfiguration
+  ├── middleware.py    # TenantMiddleware für Multi-Tenancy
+  ├── managers.py      # TenantAwareManager für Datenisolierung
   ├── encryption.py    # Fernet-Verschlüsselungstools
   ├── connectors/      # Sage Konnektoren
   │   └── sage_cloud.py   # Sage Cloud REST API Client
@@ -289,6 +339,16 @@ environment:
 ```
 
 ## Letzte Änderungen
+
+- **SaaS-Refactoring (Januar 2026)**:
+  - Django-Unfold Admin-Interface mit Sage-Grün Theme (#007e45)
+  - TenantMiddleware für request-basierte Mandantenerkennung
+  - TenantAwareManager für automatische QuerySet-Filterung
+  - Azure Blob Storage Integration (django-storages)
+  - FileField statt BinaryField für skalierbare Dokumentspeicherung
+  - Status-Badges und erweiterte Filter in Admin
+  - Dashboard-Callback mit KPI-Statistiken
+  - Root-Admin vs. Tenant-Admin Rollentrennung
 
 - **Sicherheits-Audit Fixes (Januar 2026)**:
   - Fail-secure SECRET_KEY und ALLOWED_HOSTS in Produktion
