@@ -771,8 +771,13 @@ def personnel_file_detail(request, pk):
     week_ago = timezone.now() - timedelta(days=7)
     
     for tab_key, tab_data in category_tabs.items():
-        new_count = sum(1 for doc in tab_data['documents'] if doc.created_at >= week_ago)
+        for doc in tab_data['documents']:
+            doc.is_new = doc.created_at >= week_ago
+        new_count = sum(1 for doc in tab_data['documents'] if doc.is_new)
         new_document_counts[tab_key] = new_count
+    
+    for doc in all_documents:
+        doc.is_new = doc.created_at >= week_ago
     
     pending_reminders = Reminder.objects.filter(
         Q(employee=employee) | Q(document__employee=employee),
@@ -794,6 +799,7 @@ def personnel_file_detail(request, pk):
         'new_document_counts': new_document_counts,
         'pending_reminders': pending_reminders,
         'unassigned_documents': unassigned_documents,
+        'week_ago': week_ago,
     })
 
 

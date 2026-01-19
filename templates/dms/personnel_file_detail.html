@@ -614,7 +614,7 @@
                     <div class="doc-info">
                         <div class="doc-title">
                             {{ doc.title }}
-                            {% if doc.created_at >= week_ago %}<span class="doc-new-badge">NEU</span>{% endif %}
+                            {% if doc.is_new %}<span class="doc-new-badge">NEU</span>{% endif %}
                         </div>
                         <div class="doc-meta">
                             <span>{{ doc.original_filename }}</span>

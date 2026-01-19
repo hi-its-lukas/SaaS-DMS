@@ -11,7 +11,8 @@ from .models import (
     ProcessedFile, Task, SystemLog, SystemSettings,
     ImportedLeaveRequest, ImportedTimesheet,
     FileCategory, PersonnelFile, PersonnelFileEntry, DocumentVersion,
-    AccessPermission, AuditLog, ScanJob, Tag, DocumentTag, MatchingRule
+    AccessPermission, AuditLog, ScanJob, Tag, DocumentTag, MatchingRule,
+    Reminder
 )
 from .encryption import encrypt_data, decrypt_data
 
@@ -937,3 +938,64 @@ class MatchingRuleAdmin(TenantFilterMixin, ModelAdmin):
         }),
     )
     readonly_fields = ['match_count', 'last_matched_at']
+
+
+@admin.register(Reminder)
+class ReminderAdmin(TenantFilterMixin, ModelAdmin):
+    list_display = ['title', 'reminder_type_badge', 'due_date', 'status_badge', 'employee', 'days_display', 'tenant']
+    list_filter = [
+        ('status', ChoicesDropdownFilter),
+        ('reminder_type', ChoicesDropdownFilter),
+        'tenant',
+        ('due_date', RangeDateFilter),
+    ]
+    search_fields = ['title', 'description', 'employee__first_name', 'employee__last_name']
+    date_hierarchy = 'due_date'
+    raw_id_fields = ['employee', 'document', 'assigned_to', 'completed_by', 'created_by']
+    
+    @display(description="Status", label={"Ausstehend": "warning", "Erledigt": "success", "Verworfen": "secondary"})
+    def status_badge(self, obj):
+        return obj.get_status_display()
+    
+    @display(
+        description="Typ",
+        label={
+            "Vertragsablauf": "danger",
+            "Probezeit-Ende": "warning",
+            "Prüfung fällig": "info",
+            "Zertifikat-Ablauf": "warning",
+            "Aufbewahrungsfrist": "secondary",
+            "Benutzerdefiniert": "primary",
+        }
+    )
+    def reminder_type_badge(self, obj):
+        return obj.get_reminder_type_display()
+    
+    @display(description="Verbleibend")
+    def days_display(self, obj):
+        if obj.status != 'PENDING':
+            return "-"
+        days = obj.days_until_due
+        if days is None:
+            return "-"
+        if days < 0:
+            return f"{abs(days)} Tage überfällig"
+        elif days == 0:
+            return "Heute"
+        else:
+            return f"in {days} Tagen"
+    
+    fieldsets = (
+        ('Wiedervorlage', {
+            'fields': ('title', 'description', 'reminder_type', 'tenant')
+        }),
+        ('Verknüpfung', {
+            'fields': ('employee', 'document')
+        }),
+        ('Termin', {
+            'fields': ('due_date', 'remind_days_before')
+        }),
+        ('Status', {
+            'fields': ('status', 'completed_at', 'completed_by', 'assigned_to')
+        }),
+    )

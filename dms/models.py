@@ -34,7 +34,7 @@ class Tenant(models.Model):
     description = models.TextField(blank=True, verbose_name="Beschreibung")
     is_active = models.BooleanField(default=True, verbose_name="Aktiv")
     ingest_token = models.CharField(
-        max_length=64, 
+        max_length=12, 
         unique=True, 
         db_index=True,
         null=True,
@@ -51,7 +51,7 @@ class Tenant(models.Model):
     def save(self, *args, **kwargs):
         if not self.ingest_token:
             import secrets
-            self.ingest_token = secrets.token_hex(16)
+            self.ingest_token = secrets.token_hex(6)
         super().save(*args, **kwargs)
 
     class Meta:
