@@ -696,8 +696,10 @@ def personnel_file_list(request):
 
 @login_required
 def personnel_file_detail(request, pk):
+    from .models import Reminder
+    
     personnel_file = get_object_or_404(
-        PersonnelFile.objects.select_related('employee'),
+        PersonnelFile.objects.select_related('employee', 'employee__department', 'employee__cost_center'),
         pk=pk
     )
     
@@ -707,17 +709,76 @@ def personnel_file_detail(request, pk):
     
     _log_audit(request, 'VIEW', personnel_file=personnel_file)
     
-    categories = FileCategory.objects.filter(parent__isnull=True).prefetch_related('subcategories')
+    employee = personnel_file.employee
+    
+    categories = FileCategory.objects.filter(
+        parent__isnull=True
+    ).prefetch_related('subcategories').order_by('sort_order', 'code')
     
     entries_by_category = {}
+    all_entries = []
     for entry in personnel_file.file_entries.select_related('document', 'category').all():
+        all_entries.append(entry)
         cat_code = entry.category.code.split('.')[0]
         if cat_code not in entries_by_category:
             entries_by_category[cat_code] = []
         entries_by_category[cat_code].append(entry)
     
-    # SECURITY: Nur unzugeordnete Dokumente zeigen, auf die der Benutzer Zugriff hat
-    # Für normale Benutzer: nur eigene oder Mandanten-bezogene Dokumente
+    all_documents = employee.documents.all().order_by('-created_at')
+    
+    category_tabs = {
+        'personal': {
+            'name': 'Verträge & Personal',
+            'codes': ['1', '01', 'P1'],
+            'icon': 'description',
+            'documents': []
+        },
+        'salary': {
+            'name': 'Lohn & Gehalt', 
+            'codes': ['2', '02', 'P2', 'L'],
+            'icon': 'payments',
+            'documents': []
+        },
+        'absence': {
+            'name': 'Krankheit & Abwesenheit',
+            'codes': ['3', '03', 'P3', 'K', 'U'],
+            'icon': 'medical_services',
+            'documents': []
+        },
+    }
+    
+    for doc in all_documents:
+        if doc.document_type and doc.document_type.file_category:
+            cat_code = doc.document_type.file_category.code.split('.')[0].upper()
+            assigned = False
+            for tab_key, tab_data in category_tabs.items():
+                if cat_code in tab_data['codes'] or any(cat_code.startswith(c) for c in tab_data['codes']):
+                    tab_data['documents'].append(doc)
+                    assigned = True
+                    break
+    
+    for entry in all_entries:
+        cat_code = entry.category.code.split('.')[0].upper()
+        for tab_key, tab_data in category_tabs.items():
+            if cat_code in tab_data['codes'] or any(cat_code.startswith(c) for c in tab_data['codes']):
+                if entry.document not in tab_data['documents']:
+                    tab_data['documents'].append(entry.document)
+                break
+    
+    new_document_counts = {}
+    from django.utils import timezone
+    from datetime import timedelta
+    week_ago = timezone.now() - timedelta(days=7)
+    
+    for tab_key, tab_data in category_tabs.items():
+        new_count = sum(1 for doc in tab_data['documents'] if doc.created_at >= week_ago)
+        new_document_counts[tab_key] = new_count
+    
+    pending_reminders = Reminder.objects.filter(
+        Q(employee=employee) | Q(document__employee=employee),
+        status='PENDING'
+    ).order_by('due_date')[:10]
+    
     unassigned_documents = _get_accessible_documents(
         request.user,
         Document.objects.filter(status='UNASSIGNED')
@@ -725,8 +786,13 @@ def personnel_file_detail(request, pk):
     
     return render(request, 'dms/personnel_file_detail.html', {
         'personnel_file': personnel_file,
+        'employee': employee,
         'categories': categories,
         'entries_by_category': entries_by_category,
+        'all_documents': all_documents,
+        'category_tabs': category_tabs,
+        'new_document_counts': new_document_counts,
+        'pending_reminders': pending_reminders,
         'unassigned_documents': unassigned_documents,
     })
 

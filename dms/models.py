@@ -118,16 +118,26 @@ class CostCenter(models.Model):
 
 
 class Employee(models.Model):
+    STATUS_CHOICES = [
+        ('ACTIVE', 'Aktiv'),
+        ('ONBOARDING', 'Onboarding'),
+        ('OFFBOARDING', 'Offboarding'),
+        ('ARCHIVED', 'Archiviert'),
+    ]
+    
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='employees', null=True, blank=True)
     employee_id = models.CharField(max_length=50, verbose_name="Mitarbeiter-ID")
     sage_cloud_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="Sage Cloud ID")
     first_name = models.CharField(max_length=100, verbose_name="Vorname")
     last_name = models.CharField(max_length=100, verbose_name="Nachname")
     email = models.EmailField(blank=True)
+    job_title = models.CharField(max_length=200, blank=True, verbose_name="Position/Jobtitel")
+    photo = models.ImageField(upload_to='employee_photos/', blank=True, null=True, verbose_name="Foto")
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Abteilung")
     cost_center = models.ForeignKey(CostCenter, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Kostenstelle")
     entry_date = models.DateField(null=True, blank=True, verbose_name="Eintrittsdatum")
     exit_date = models.DateField(null=True, blank=True, verbose_name="Austrittsdatum")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ACTIVE', verbose_name="Status")
     user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='employee_profile')
     is_active = models.BooleanField(default=True, verbose_name="Aktiv")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -142,9 +152,15 @@ class Employee(models.Model):
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
+    
+    @property
+    def status_display(self):
+        return dict(self.STATUS_CHOICES).get(self.status, self.status)
 
     class Meta:
         ordering = ['last_name', 'first_name']
+        verbose_name = "Mitarbeiter"
+        verbose_name_plural = "Mitarbeiter"
         constraints = [
             models.UniqueConstraint(fields=['tenant', 'employee_id'], name='unique_employee_per_tenant')
         ]
@@ -1060,3 +1076,102 @@ class MatchingRule(models.Model):
         ordering = ['-priority', 'name']
         verbose_name = "Matching-Regel"
         verbose_name_plural = "Matching-Regeln"
+
+
+class Reminder(models.Model):
+    """Wiedervorlagen und Fristen für Dokumente und Mitarbeiter"""
+    
+    TYPE_CHOICES = [
+        ('CONTRACT_EXPIRY', 'Vertragsablauf'),
+        ('PROBATION_END', 'Probezeit-Ende'),
+        ('REVIEW_DUE', 'Prüfung fällig'),
+        ('CERTIFICATE_EXPIRY', 'Zertifikat-Ablauf'),
+        ('RETENTION_EXPIRY', 'Aufbewahrungsfrist'),
+        ('CUSTOM', 'Benutzerdefiniert'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('PENDING', 'Ausstehend'),
+        ('COMPLETED', 'Erledigt'),
+        ('DISMISSED', 'Verworfen'),
+    ]
+    
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='reminders', null=True, blank=True)
+    
+    objects = TenantAwareManagerAllowNull()
+    all_objects = models.Manager()
+    
+    title = models.CharField(max_length=200, verbose_name="Titel")
+    description = models.TextField(blank=True, verbose_name="Beschreibung")
+    reminder_type = models.CharField(max_length=30, choices=TYPE_CHOICES, default='CUSTOM', verbose_name="Typ")
+    
+    employee = models.ForeignKey(
+        Employee, 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True, 
+        related_name='reminders',
+        verbose_name="Mitarbeiter"
+    )
+    document = models.ForeignKey(
+        Document, 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True, 
+        related_name='reminders',
+        verbose_name="Dokument"
+    )
+    
+    due_date = models.DateField(verbose_name="Fälligkeitsdatum")
+    remind_days_before = models.PositiveIntegerField(default=14, verbose_name="Tage vorher erinnern")
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING', verbose_name="Status")
+    completed_at = models.DateTimeField(null=True, blank=True, verbose_name="Erledigt am")
+    completed_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='completed_reminders',
+        verbose_name="Erledigt von"
+    )
+    
+    assigned_to = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='assigned_reminders',
+        verbose_name="Zugewiesen an"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='created_reminders',
+        verbose_name="Erstellt von"
+    )
+    
+    def __str__(self):
+        return f"{self.title} - {self.due_date}"
+    
+    @property
+    def is_overdue(self):
+        from django.utils import timezone
+        return self.status == 'PENDING' and self.due_date < timezone.now().date()
+    
+    @property
+    def days_until_due(self):
+        from django.utils import timezone
+        if self.status != 'PENDING':
+            return None
+        return (self.due_date - timezone.now().date()).days
+    
+    class Meta:
+        ordering = ['due_date', '-created_at']
+        verbose_name = "Wiedervorlage"
+        verbose_name_plural = "Wiedervorlagen"

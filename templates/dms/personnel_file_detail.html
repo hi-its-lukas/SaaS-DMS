@@ -1,189 +1,696 @@
 {% extends 'dms/base.html' %}
 {% load dms_extras %}
 
-{% block title %}{{ personnel_file.file_number }}{% endblock %}
+{% block title %}{{ employee.full_name }} - Personalakte{% endblock %}
 
 {% block extra_css %}
 <style>
-    .file-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-    .file-info h2 { margin-bottom: 5px; }
-    .file-meta { color: #666; font-size: 0.9rem; }
-    .file-meta span { margin-right: 20px; }
-    .category-tree { margin-top: 20px; }
-    .category-item { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
-    .category-header { background: #f8f9fa; padding: 12px 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
-    .category-header:hover { background: #e9ecef; }
-    .category-header h3 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 10px; }
-    .category-code { font-family: monospace; color: #666; font-size: 0.85rem; }
-    .category-count { background: #3498db; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; }
-    .category-content { display: none; padding: 15px; border-top: 1px solid #e0e0e0; }
-    .category-item.open .category-content { display: block; }
-    .subcategory { margin-left: 20px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
-    .subcategory:last-child { border-bottom: none; }
-    .subcategory-header { display: flex; justify-content: space-between; align-items: center; }
-    .subcategory-name { font-weight: 500; }
-    .document-list { margin-top: 10px; }
-    .document-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; margin-bottom: 5px; }
-    .document-item:hover { background: #e9ecef; }
-    .document-title { flex: 1; color: #2c3e50; text-decoration: none; }
-    .document-title:hover { color: #3498db; text-decoration: underline; }
-    .document-date { color: #666; font-size: 0.85rem; margin: 0 15px; }
-    .document-period { color: #3498db; font-size: 0.85rem; margin-right: 15px; font-weight: 500; }
-    .retention-info { font-size: 0.8rem; color: #95a5a6; }
-    .empty-category { color: #95a5a6; font-style: italic; padding: 10px 0; }
-    .toggle-icon { transition: transform 0.2s; }
-    .category-item.open .toggle-icon { transform: rotate(90deg); }
-    .add-doc-btn { font-size: 0.85rem; padding: 4px 10px; }
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
-    .modal.show { display: flex; }
-    .modal-content { background: white; padding: 30px; border-radius: 8px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-    .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666; }
-    .form-group { margin-bottom: 15px; }
-    .form-group label { display: block; margin-bottom: 5px; font-weight: 500; }
-    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+    .personnel-file-container { display: grid; grid-template-columns: 320px 1fr; gap: 24px; }
+    
+    @media (max-width: 1024px) {
+        .personnel-file-container { grid-template-columns: 1fr; }
+    }
+    
+    .employee-sidebar {
+        background: var(--bg-card);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border);
+        overflow: hidden;
+        height: fit-content;
+        position: sticky;
+        top: 80px;
+    }
+    
+    .employee-header {
+        background: linear-gradient(135deg, #007e45 0%, #005a32 100%);
+        padding: 24px;
+        text-align: center;
+        color: white;
+    }
+    
+    .employee-photo {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        border: 4px solid rgba(255,255,255,0.3);
+        margin: 0 auto 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255,255,255,0.2);
+        font-size: 36px;
+        font-weight: 600;
+    }
+    
+    .employee-photo img {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+    
+    .employee-name {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+    
+    .employee-title {
+        font-size: 14px;
+        opacity: 0.9;
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-top: 12px;
+        text-transform: uppercase;
+    }
+    
+    .status-ACTIVE { background: rgba(255,255,255,0.2); color: white; }
+    .status-ONBOARDING { background: #3182ce; color: white; }
+    .status-OFFBOARDING { background: #dd6b20; color: white; }
+    .status-ARCHIVED { background: #718096; color: white; }
+    
+    .employee-details {
+        padding: 20px;
+    }
+    
+    .detail-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+    }
+    
+    .detail-item:last-child { border-bottom: none; }
+    
+    .detail-label {
+        color: var(--text-secondary);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .detail-label .material-icons { font-size: 16px; }
+    
+    .detail-value {
+        font-weight: 500;
+        color: var(--text-primary);
+        text-align: right;
+    }
+    
+    .reminders-section {
+        padding: 16px 20px;
+        border-top: 1px solid var(--border);
+        background: #fffaf0;
+    }
+    
+    .reminders-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--warning);
+        text-transform: uppercase;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .reminder-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        font-size: 13px;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+    
+    .reminder-item:last-child { border-bottom: none; }
+    
+    .reminder-date {
+        font-size: 11px;
+        color: var(--warning);
+        font-weight: 600;
+    }
+    
+    .reminder-overdue { color: var(--error); }
+    
+    .file-main {
+        background: var(--bg-card);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border);
+        overflow: hidden;
+    }
+    
+    .file-tabs {
+        display: flex;
+        border-bottom: 2px solid var(--border);
+        background: #f8f9fa;
+        overflow-x: auto;
+    }
+    
+    .file-tab {
+        padding: 16px 24px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-secondary);
+        font-weight: 500;
+        font-size: 14px;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+    
+    .file-tab:hover {
+        color: var(--text-primary);
+        background: var(--bg-hover);
+    }
+    
+    .file-tab.active {
+        color: #007e45;
+        border-bottom-color: #007e45;
+        background: white;
+    }
+    
+    .file-tab .material-icons { font-size: 18px; }
+    
+    .tab-badge {
+        background: #007e45;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
+    .tab-badge.new {
+        background: var(--error);
+    }
+    
+    .tab-content {
+        display: none;
+        padding: 24px;
+        min-height: 400px;
+    }
+    
+    .tab-content.active { display: block; }
+    
+    .documents-grid {
+        display: grid;
+        gap: 12px;
+    }
+    
+    .document-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px;
+        background: var(--bg-page);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border);
+        transition: all 0.2s;
+    }
+    
+    .document-card:hover {
+        border-color: #007e45;
+        box-shadow: 0 2px 8px rgba(0,126,69,0.1);
+    }
+    
+    .doc-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: var(--radius-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    
+    .doc-icon.pdf { background: #fee2e2; color: #dc2626; }
+    .doc-icon.doc { background: #dbeafe; color: #2563eb; }
+    .doc-icon.img { background: #d1fae5; color: #059669; }
+    .doc-icon.default { background: var(--bg-hover); color: var(--text-secondary); }
+    
+    .doc-info { flex: 1; min-width: 0; }
+    
+    .doc-title {
+        font-weight: 500;
+        color: var(--text-primary);
+        margin-bottom: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .doc-meta {
+        font-size: 12px;
+        color: var(--text-secondary);
+        display: flex;
+        gap: 16px;
+    }
+    
+    .doc-new-badge {
+        background: var(--error);
+        color: white;
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+        margin-left: 8px;
+    }
+    
+    .doc-actions {
+        display: flex;
+        gap: 8px;
+    }
+    
+    .doc-action-btn {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        background: white;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    
+    .doc-action-btn:hover {
+        background: #007e45;
+        color: white;
+        border-color: #007e45;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-muted);
+    }
+    
+    .empty-state .material-icons {
+        font-size: 48px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+    
+    .timeline-item {
+        display: flex;
+        gap: 16px;
+        padding: 16px 0;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .timeline-item:last-child { border-bottom: none; }
+    
+    .timeline-date {
+        width: 80px;
+        flex-shrink: 0;
+        text-align: center;
+    }
+    
+    .timeline-day {
+        font-size: 24px;
+        font-weight: 700;
+        color: #007e45;
+    }
+    
+    .timeline-month {
+        font-size: 12px;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+    }
+    
+    .timeline-content {
+        flex: 1;
+        background: var(--bg-page);
+        padding: 16px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border);
+    }
+    
+    .timeline-title {
+        font-weight: 500;
+        margin-bottom: 4px;
+    }
+    
+    .timeline-meta {
+        font-size: 12px;
+        color: var(--text-secondary);
+    }
+    
+    .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-size: 14px;
+        margin-bottom: 16px;
+    }
+    
+    .back-link:hover { color: #007e45; }
+    
+    .category-section { margin-bottom: 24px; }
+    
+    .category-header-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background: var(--bg-page);
+        border-radius: var(--radius-md);
+        margin-bottom: 12px;
+    }
+    
+    .category-name {
+        font-weight: 600;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .category-count {
+        background: #007e45;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="file-header">
-        <div class="file-info">
-            <h2>{{ personnel_file.file_number }} - {{ personnel_file.employee.full_name }}</h2>
-            <div class="file-meta">
-                <span>Personalnr.: {{ personnel_file.employee.employee_id }}</span>
-                <span>Abteilung: {{ personnel_file.employee.department|default:"-" }}</span>
-                <span>Status: {{ personnel_file.get_status_display }}</span>
-                <span>Eröffnet: {{ personnel_file.opened_at|date:"d.m.Y" }}</span>
-                {% if personnel_file.retention_until %}
-                <span>Aufbewahren bis: {{ personnel_file.retention_until|date:"d.m.Y" }}</span>
+<a href="{% url 'dms:personnel_file_list' %}" class="back-link">
+    <span class="material-icons">arrow_back</span>
+    Zurück zur Übersicht
+</a>
+
+<div class="personnel-file-container">
+    <aside class="employee-sidebar">
+        <div class="employee-header">
+            <div class="employee-photo">
+                {% if employee.photo %}
+                    <img src="{{ employee.photo.url }}" alt="{{ employee.full_name }}">
+                {% else %}
+                    {{ employee.first_name|slice:":1" }}{{ employee.last_name|slice:":1" }}
+                {% endif %}
+            </div>
+            <div class="employee-name">{{ employee.full_name }}</div>
+            <div class="employee-title">{{ employee.job_title|default:"Mitarbeiter" }}</div>
+            <span class="status-badge status-{{ employee.status }}">{{ employee.get_status_display }}</span>
+        </div>
+        
+        <div class="employee-details">
+            <div class="detail-item">
+                <span class="detail-label">
+                    <span class="material-icons">badge</span>
+                    Personalnummer
+                </span>
+                <span class="detail-value">{{ employee.employee_id }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">
+                    <span class="material-icons">business</span>
+                    Abteilung
+                </span>
+                <span class="detail-value">{{ employee.department|default:"-" }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">
+                    <span class="material-icons">account_balance</span>
+                    Kostenstelle
+                </span>
+                <span class="detail-value">{{ employee.cost_center|default:"-" }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">
+                    <span class="material-icons">event</span>
+                    Eintrittsdatum
+                </span>
+                <span class="detail-value">{{ employee.entry_date|date:"d.m.Y"|default:"-" }}</span>
+            </div>
+            {% if employee.exit_date %}
+            <div class="detail-item">
+                <span class="detail-label">
+                    <span class="material-icons">event_busy</span>
+                    Austrittsdatum
+                </span>
+                <span class="detail-value">{{ employee.exit_date|date:"d.m.Y" }}</span>
+            </div>
+            {% endif %}
+            <div class="detail-item">
+                <span class="detail-label">
+                    <span class="material-icons">email</span>
+                    E-Mail
+                </span>
+                <span class="detail-value">{{ employee.email|default:"-" }}</span>
+            </div>
+        </div>
+        
+        {% if pending_reminders %}
+        <div class="reminders-section">
+            <div class="reminders-title">
+                <span class="material-icons">notifications_active</span>
+                Wiedervorlagen
+            </div>
+            {% for reminder in pending_reminders %}
+            <div class="reminder-item">
+                <span class="material-icons" style="font-size: 16px; color: {% if reminder.is_overdue %}var(--error){% else %}var(--warning){% endif %};">
+                    {% if reminder.is_overdue %}warning{% else %}schedule{% endif %}
+                </span>
+                <div style="flex: 1;">
+                    <div>{{ reminder.title }}</div>
+                    <div class="reminder-date {% if reminder.is_overdue %}reminder-overdue{% endif %}">
+                        {{ reminder.due_date|date:"d.m.Y" }}
+                        {% if reminder.days_until_due != None %}
+                            ({% if reminder.days_until_due < 0 %}{{ reminder.days_until_due|abs }} Tage überfällig{% elif reminder.days_until_due == 0 %}Heute{% else %}in {{ reminder.days_until_due }} Tagen{% endif %})
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </aside>
+    
+    <main class="file-main">
+        <div class="file-tabs">
+            <div class="file-tab active" data-tab="stammdaten">
+                <span class="material-icons">person</span>
+                Stammdaten
+            </div>
+            <div class="file-tab" data-tab="personal">
+                <span class="material-icons">description</span>
+                Verträge & Personal
+                {% if category_tabs.personal.documents %}
+                <span class="tab-badge {% if new_document_counts.personal > 0 %}new{% endif %}">
+                    {{ category_tabs.personal.documents|length }}{% if new_document_counts.personal > 0 %} / {{ new_document_counts.personal }} neu{% endif %}
+                </span>
+                {% endif %}
+            </div>
+            <div class="file-tab" data-tab="salary">
+                <span class="material-icons">payments</span>
+                Lohn & Gehalt
+                {% if category_tabs.salary.documents %}
+                <span class="tab-badge {% if new_document_counts.salary > 0 %}new{% endif %}">
+                    {{ category_tabs.salary.documents|length }}{% if new_document_counts.salary > 0 %} / {{ new_document_counts.salary }} neu{% endif %}
+                </span>
+                {% endif %}
+            </div>
+            <div class="file-tab" data-tab="absence">
+                <span class="material-icons">medical_services</span>
+                Krankheit & Abwesenheit
+                {% if category_tabs.absence.documents %}
+                <span class="tab-badge {% if new_document_counts.absence > 0 %}new{% endif %}">
+                    {{ category_tabs.absence.documents|length }}{% if new_document_counts.absence > 0 %} / {{ new_document_counts.absence }} neu{% endif %}
+                </span>
+                {% endif %}
+            </div>
+            <div class="file-tab" data-tab="timeline">
+                <span class="material-icons">timeline</span>
+                Timeline
+                {% if all_documents %}
+                <span class="tab-badge">{{ all_documents|length }}</span>
                 {% endif %}
             </div>
         </div>
-        <div>
-            <a href="{% url 'dms:personnel_file_list' %}" class="btn">Zurück zur Liste</a>
-        </div>
-    </div>
-
-    <div class="category-tree">
-        {% for category in categories %}
-        {% with cat_code=category.code %}
-        <div class="category-item {% if cat_code in entries_by_category %}open{% endif %}">
-            <div class="category-header" onclick="this.parentElement.classList.toggle('open')">
-                <h3>
-                    <span class="toggle-icon">▶</span>
-                    <span class="category-code">{{ category.code }}</span>
-                    {{ category.name }}
-                    {% if cat_code in entries_by_category %}
-                        <span class="category-count">{{ entries_by_category|get_item:cat_code|length }}</span>
-                    {% endif %}
-                </h3>
-                <span class="retention-info">{{ category.retention_years }} Jahre ab {{ category.get_retention_trigger_display }}</span>
-            </div>
-            <div class="category-content">
-                {% for sub in category.subcategories.all %}
-                <div class="subcategory">
-                    <div class="subcategory-header">
-                        <span class="subcategory-name">
-                            <span class="category-code">{{ sub.code }}</span>
-                            {{ sub.name }}
-                        </span>
-                        <button class="btn add-doc-btn" onclick="openAddDocModal('{{ sub.id }}', '{{ sub.code }} - {{ sub.name }}')">+ Dokument</button>
+        
+        <div class="tab-content active" id="tab-stammdaten">
+            <h3 style="margin-bottom: 20px;">Stammdaten</h3>
+            
+            <div class="card" style="margin-bottom: 0;">
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px;">
+                    <div>
+                        <h4 style="color: var(--text-secondary); font-size: 12px; text-transform: uppercase; margin-bottom: 16px;">Persönliche Daten</h4>
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="padding: 8px 0; color: var(--text-secondary);">Vorname</td>
+                                <td style="padding: 8px 0; font-weight: 500;">{{ employee.first_name }}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; color: var(--text-secondary);">Nachname</td>
+                                <td style="padding: 8px 0; font-weight: 500;">{{ employee.last_name }}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; color: var(--text-secondary);">Position</td>
+                                <td style="padding: 8px 0; font-weight: 500;">{{ employee.job_title|default:"-" }}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; color: var(--text-secondary);">E-Mail</td>
+                                <td style="padding: 8px 0; font-weight: 500;">{{ employee.email|default:"-" }}</td>
+                            </tr>
+                        </table>
                     </div>
-                    <div class="document-list">
-                        {% for entry in entries_by_category|get_item:cat_code %}
-                            {% if entry.category.code == sub.code %}
-                            <div class="document-item">
-                                <a href="{% url 'dms:document_detail' pk=entry.document.pk %}" class="document-title">{{ entry.document.title }}</a>
-                                {% if entry.document.period_year and entry.document.period_month %}
-                                <span class="document-period">{{ entry.document.period_month|stringformat:"02d" }}/{{ entry.document.period_year }}</span>
-                                {% endif %}
-                                <span class="document-date">{{ entry.document_date|date:"d.m.Y"|default:entry.created_at|date:"d.m.Y" }}</span>
-                                <a href="{% url 'dms:document_detail' pk=entry.document.pk %}" class="btn">Ansehen</a>
-                            </div>
-                            {% endif %}
-                        {% endfor %}
+                    <div>
+                        <h4 style="color: var(--text-secondary); font-size: 12px; text-transform: uppercase; margin-bottom: 16px;">Organisatorische Daten</h4>
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="padding: 8px 0; color: var(--text-secondary);">Personalnummer</td>
+                                <td style="padding: 8px 0; font-weight: 500;">{{ employee.employee_id }}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; color: var(--text-secondary);">Abteilung</td>
+                                <td style="padding: 8px 0; font-weight: 500;">{{ employee.department|default:"-" }}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; color: var(--text-secondary);">Kostenstelle</td>
+                                <td style="padding: 8px 0; font-weight: 500;">{{ employee.cost_center|default:"-" }}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; color: var(--text-secondary);">Status</td>
+                                <td style="padding: 8px 0;">
+                                    <span class="badge badge-{% if employee.status == 'ACTIVE' %}success{% elif employee.status == 'ARCHIVED' %}default{% else %}warning{% endif %}">
+                                        {{ employee.get_status_display }}
+                                    </span>
+                                </td>
+                            </tr>
+                        </table>
                     </div>
                 </div>
-                {% empty %}
-                <div class="subcategory">
-                    <div class="subcategory-header">
-                        <span class="subcategory-name">{{ category.name }}</span>
-                        <button class="btn add-doc-btn" onclick="openAddDocModal('{{ category.id }}', '{{ category.code }} - {{ category.name }}')">+ Dokument</button>
+                
+                <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border);">
+                
+                <h4 style="color: var(--text-secondary); font-size: 12px; text-transform: uppercase; margin-bottom: 16px;">Beschäftigungszeitraum</h4>
+                <div style="display: flex; gap: 40px;">
+                    <div>
+                        <div style="color: var(--text-secondary); font-size: 12px;">Eintrittsdatum</div>
+                        <div style="font-size: 18px; font-weight: 600; color: #007e45;">{{ employee.entry_date|date:"d.m.Y"|default:"Nicht angegeben" }}</div>
                     </div>
-                    <div class="document-list">
-                        {% for entry in entries_by_category|get_item:cat_code %}
-                            {% if entry.category.code == category.code %}
-                            <div class="document-item">
-                                <a href="{% url 'dms:document_detail' pk=entry.document.pk %}" class="document-title">{{ entry.document.title }}</a>
-                                {% if entry.document.period_year and entry.document.period_month %}
-                                <span class="document-period">{{ entry.document.period_month|stringformat:"02d" }}/{{ entry.document.period_year }}</span>
-                                {% endif %}
-                                <span class="document-date">{{ entry.document_date|date:"d.m.Y"|default:entry.created_at|date:"d.m.Y" }}</span>
-                                <a href="{% url 'dms:document_detail' pk=entry.document.pk %}" class="btn">Ansehen</a>
-                            </div>
+                    {% if employee.exit_date %}
+                    <div>
+                        <div style="color: var(--text-secondary); font-size: 12px;">Austrittsdatum</div>
+                        <div style="font-size: 18px; font-weight: 600; color: var(--error);">{{ employee.exit_date|date:"d.m.Y" }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        {% for tab_key, tab_data in category_tabs.items %}
+        <div class="tab-content" id="tab-{{ tab_key }}">
+            <h3 style="margin-bottom: 20px;">{{ tab_data.name }}</h3>
+            
+            {% if tab_data.documents %}
+            <div class="documents-grid">
+                {% for doc in tab_data.documents %}
+                <div class="document-card">
+                    <div class="doc-icon {% if doc.file_extension == '.pdf' %}pdf{% elif doc.file_extension in '.doc,.docx' %}doc{% elif doc.file_extension in '.jpg,.png,.gif' %}img{% else %}default{% endif %}">
+                        <span class="material-icons">
+                            {% if doc.file_extension == '.pdf' %}picture_as_pdf{% elif doc.file_extension in '.doc,.docx' %}article{% elif doc.file_extension in '.jpg,.png,.gif' %}image{% else %}insert_drive_file{% endif %}
+                        </span>
+                    </div>
+                    <div class="doc-info">
+                        <div class="doc-title">
+                            {{ doc.title }}
+                            {% if doc.created_at >= week_ago %}<span class="doc-new-badge">NEU</span>{% endif %}
+                        </div>
+                        <div class="doc-meta">
+                            <span>{{ doc.original_filename }}</span>
+                            <span>{{ doc.created_at|date:"d.m.Y" }}</span>
+                            {% if doc.period_year and doc.period_month %}
+                            <span style="color: #007e45; font-weight: 500;">{{ doc.period_month|stringformat:"02d" }}/{{ doc.period_year }}</span>
                             {% endif %}
-                        {% endfor %}
+                        </div>
+                    </div>
+                    <div class="doc-actions">
+                        <a href="{% url 'dms:document_view' pk=doc.pk %}" class="doc-action-btn" title="Ansehen">
+                            <span class="material-icons" style="font-size: 18px;">visibility</span>
+                        </a>
+                        <a href="{% url 'dms:document_download' pk=doc.pk %}" class="doc-action-btn" title="Download">
+                            <span class="material-icons" style="font-size: 18px;">download</span>
+                        </a>
                     </div>
                 </div>
                 {% endfor %}
             </div>
+            {% else %}
+            <div class="empty-state">
+                <span class="material-icons">folder_open</span>
+                <div>Noch keine Dokumente in dieser Kategorie</div>
+            </div>
+            {% endif %}
         </div>
-        {% endwith %}
         {% endfor %}
-    </div>
-</div>
-
-<div class="modal" id="addDocModal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>Dokument zur Akte hinzufügen</h3>
-            <button class="modal-close" onclick="closeModal()">&times;</button>
+        
+        <div class="tab-content" id="tab-timeline">
+            <h3 style="margin-bottom: 20px;">Alle Dokumente (chronologisch)</h3>
+            
+            {% if all_documents %}
+            <div class="timeline">
+                {% for doc in all_documents %}
+                <div class="timeline-item">
+                    <div class="timeline-date">
+                        <div class="timeline-day">{{ doc.created_at|date:"d" }}</div>
+                        <div class="timeline-month">{{ doc.created_at|date:"M Y" }}</div>
+                    </div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">
+                            <a href="{% url 'dms:document_detail' pk=doc.pk %}" style="color: inherit; text-decoration: none;">
+                                {{ doc.title }}
+                            </a>
+                        </div>
+                        <div class="timeline-meta">
+                            {{ doc.original_filename }} &bull; 
+                            {{ doc.get_source_display }} &bull;
+                            {% if doc.document_type %}{{ doc.document_type.name }}{% else %}Nicht klassifiziert{% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <span class="material-icons">history</span>
+                <div>Noch keine Dokumente vorhanden</div>
+            </div>
+            {% endif %}
         </div>
-        <form id="addDocForm" method="post" action="{% url 'dms:personnel_file_add_document' pk=personnel_file.pk %}">
-            {% csrf_token %}
-            <input type="hidden" name="category_id" id="categoryId">
-            <div class="form-group">
-                <label>Kategorie</label>
-                <input type="text" id="categoryName" readonly>
-            </div>
-            <div class="form-group">
-                <label>Dokument auswählen</label>
-                <select name="document_id" required>
-                    <option value="">-- Dokument wählen --</option>
-                    {% for doc in unassigned_documents %}
-                    <option value="{{ doc.id }}">{{ doc.title }} ({{ doc.original_filename }})</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Dokumentdatum</label>
-                <input type="date" name="document_date">
-            </div>
-            <div class="form-group">
-                <label>Bemerkungen</label>
-                <textarea name="notes" rows="3"></textarea>
-            </div>
-            <button type="submit" class="btn btn-success">Hinzufügen</button>
-        </form>
-    </div>
+    </main>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-function openAddDocModal(categoryId, categoryName) {
-    document.getElementById('categoryId').value = categoryId;
-    document.getElementById('categoryName').value = categoryName;
-    document.getElementById('addDocModal').classList.add('show');
-}
-
-function closeModal() {
-    document.getElementById('addDocModal').classList.remove('show');
-}
-
-document.getElementById('addDocModal').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
+document.querySelectorAll('.file-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.file-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        this.classList.add('active');
+        document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+    });
 });
 </script>
 {% endblock %}
