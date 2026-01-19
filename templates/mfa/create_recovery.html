@@ -26,11 +26,6 @@
     </div>
 </div>
 
-<div class="recovery-codes">
-    <pre>{% for code in mfa_data %}{{ code }}
-{% endfor %}</pre>
-</div>
-
 <form method="POST">
     {% csrf_token %}
     <div class="form-group">
@@ -42,10 +37,25 @@
                value="{{ form.name.value|default:'Wiederherstellungscodes' }}"
                required>
     </div>
-    <input type="hidden" name="code" value="confirm">
+    
+    <div class="form-group">
+        <label>Ihr Wiederherstellungscode</label>
+        <div class="recovery-codes">
+            <pre>{{ mfa_data.code }}</pre>
+        </div>
+    </div>
+    
+    <div class="form-group" style="margin-top: 1rem;">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <input type="checkbox" name="confirm_saved" required style="width: auto;">
+            <span>Ich habe den Code sicher gespeichert</span>
+        </label>
+    </div>
+    
+    <input type="hidden" name="code" value="{{ mfa_data.code }}">
     <button type="submit" class="btn btn-success">
         <span class="material-icons">save</span>
-        Codes gespeichert - Bestätigen
+        Code bestätigen und speichern
     </button>
 </form>
 {% endif %}
