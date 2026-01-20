@@ -239,11 +239,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'dms_project.wsgi.application'
 
-if os.environ.get('DATABASE_URL'):
-    DATABASES = {
-        'default': dj_database_url.config(default=os.environ.get('DATABASE_URL'))
-    }
-else:
+_database_url = os.environ.get('DATABASE_URL', '')
+_use_azure_db = os.environ.get('DB_HOST') or (not _database_url) or ('://db:' in _database_url) or ('://db/' in _database_url)
+
+if _use_azure_db:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -256,6 +255,10 @@ else:
                 'sslmode': 'require',
             },
         }
+    }
+else:
+    DATABASES = {
+        'default': dj_database_url.config(default=_database_url)
     }
 
 AUTH_PASSWORD_VALIDATORS = [
