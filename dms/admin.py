@@ -20,7 +20,9 @@ from .encryption import encrypt_data, decrypt_data
 def dashboard_callback(request, context):
     """
     Dashboard callback for Unfold admin.
-    Provides statistics and recent activity for the dashboard.
+    Implements "Blind Root-Admin" pattern:
+    - Superusers see only tenant overview and system-level metrics
+    - Tenant users see their tenant's document/employee statistics
     """
     from django.db.models import Count, Q
     from django.utils import timezone
@@ -30,27 +32,34 @@ def dashboard_callback(request, context):
     week_ago = today - timedelta(days=7)
     
     if request.user.is_superuser:
-        total_documents = Document.all_objects.count()
-        total_employees = Employee.all_objects.count()
         total_tenants = Tenant.objects.count()
-        inbox_count = Document.all_objects.filter(status='UNASSIGNED').count()
-        recent_docs = Document.all_objects.filter(created_at__date__gte=week_ago).count()
+        active_tenants = Tenant.objects.filter(is_active=True).count()
+        pending_invites = TenantInvite.objects.filter(status='PENDING').count()
+        total_users = TenantUser.objects.count()
+        
+        context.update({
+            "kpi": [
+                {"title": "Mandanten", "metric": total_tenants, "icon": "domain"},
+                {"title": "Aktive Mandanten", "metric": active_tenants, "icon": "check_circle"},
+                {"title": "Offene Einladungen", "metric": pending_invites, "icon": "mail"},
+                {"title": "Benutzer", "metric": total_users, "icon": "people"},
+            ],
+        })
     else:
         total_documents = Document.objects.count()
         total_employees = Employee.objects.count()
-        total_tenants = 1
         inbox_count = Document.objects.filter(status='UNASSIGNED').count()
         recent_docs = Document.objects.filter(created_at__date__gte=week_ago).count()
-    
-    context.update({
-        "kpi": [
-            {"title": "Dokumente", "metric": total_documents, "icon": "description"},
-            {"title": "Mitarbeiter", "metric": total_employees, "icon": "badge"},
-            {"title": "Mandanten", "metric": total_tenants, "icon": "domain"},
-            {"title": "Inbox", "metric": inbox_count, "icon": "inbox"},
-        ],
-        "recent_documents_count": recent_docs,
-    })
+        
+        context.update({
+            "kpi": [
+                {"title": "Dokumente", "metric": total_documents, "icon": "description"},
+                {"title": "Mitarbeiter", "metric": total_employees, "icon": "badge"},
+                {"title": "Inbox", "metric": inbox_count, "icon": "inbox"},
+                {"title": "Neu (7 Tage)", "metric": recent_docs, "icon": "schedule"},
+            ],
+            "recent_documents_count": recent_docs,
+        })
     
     return context
 
@@ -58,13 +67,14 @@ def dashboard_callback(request, context):
 class TenantFilterMixin:
     """
     Mixin for admin classes to filter querysets by tenant.
-    Superusers see all data; regular users see only their tenant's data.
+    Implements "Blind Root-Admin" pattern:
+    - Superusers (Root-Admin) CANNOT see tenant-specific data
+    - Tenant-Admins see only their tenant's data
+    - Regular users see only their tenant's data
     """
     
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        if request.user.is_superuser:
-            return qs
         tenant = getattr(request, 'tenant', None)
         if tenant and hasattr(self.model, 'tenant'):
             return qs.filter(tenant=tenant)
@@ -76,6 +86,31 @@ class TenantFilterMixin:
                 id=getattr(request, 'tenant', None).id if getattr(request, 'tenant', None) else None
             )
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    
+    def has_module_permission(self, request):
+        if request.user.is_superuser:
+            return False
+        return super().has_module_permission(request)
+    
+    def has_view_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return False
+        return super().has_view_permission(request, obj)
+    
+    def has_add_permission(self, request):
+        if request.user.is_superuser:
+            return False
+        return super().has_add_permission(request)
+    
+    def has_change_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return False
+        return super().has_change_permission(request, obj)
+    
+    def has_delete_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return False
+        return super().has_delete_permission(request, obj)
 
 
 class TenantUserInline(TabularInline):
@@ -246,15 +281,45 @@ class TenantInviteAdmin(ModelAdmin):
 
 
 @admin.register(TenantUser)
-class TenantUserAdmin(TenantFilterMixin, ModelAdmin):
-    list_display = ['user', 'tenant', 'is_admin_badge', 'created_at']
-    list_filter = ['tenant', 'is_admin']
-    search_fields = ['user__username', 'tenant__name']
-    raw_id_fields = ['user']
+class TenantUserAdmin(ModelAdmin):
+    """
+    TenantUser Admin - visible to Root-Admin for user management.
+    Root-Admin can view and manage all tenant user assignments.
+    """
+    list_display = ['user', 'tenant', 'role', 'is_admin_badge', 'consent_given_at', 'created_at']
+    list_filter = ['tenant', 'is_admin', 'role']
+    search_fields = ['user__username', 'tenant__name', 'user__email']
+    raw_id_fields = ['user', 'invited_via']
+    readonly_fields = ['consent_given_at', 'consent_version', 'consent_ip', 'invited_via', 'created_at']
+    
+    fieldsets = (
+        ('Zuordnung', {
+            'fields': ('user', 'tenant', 'is_admin', 'role')
+        }),
+        ('DSGVO-Einwilligung', {
+            'fields': ('consent_given_at', 'consent_version', 'consent_ip', 'invited_via'),
+            'classes': ('collapse',)
+        }),
+    )
     
     @display(description="Admin", label={"Ja": "success", "Nein": "info"})
     def is_admin_badge(self, obj):
         return "Ja" if obj.is_admin else "Nein"
+    
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+    
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser
+    
+    def has_add_permission(self, request):
+        return request.user.is_superuser
+    
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
+    
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
 
 
 @admin.register(Department)
@@ -485,8 +550,39 @@ class ProcessedFileAdmin(TenantFilterMixin, ModelAdmin):
     sha256_hash_short.short_description = 'SHA-256'
 
 
+class BlindRootAdminMixin:
+    """
+    Mixin to hide admin sections from Root-Admin (superuser).
+    Used for tenant-specific models that don't have a tenant field.
+    """
+    def has_module_permission(self, request):
+        if request.user.is_superuser:
+            return False
+        return super().has_module_permission(request)
+    
+    def has_view_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return False
+        return super().has_view_permission(request, obj)
+    
+    def has_add_permission(self, request):
+        if request.user.is_superuser:
+            return False
+        return super().has_add_permission(request)
+    
+    def has_change_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return False
+        return super().has_change_permission(request, obj)
+    
+    def has_delete_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return False
+        return super().has_delete_permission(request, obj)
+
+
 @admin.register(Task)
-class TaskAdmin(ModelAdmin):
+class TaskAdmin(BlindRootAdminMixin, ModelAdmin):
     list_display = ['title', 'status_badge', 'priority_badge', 'assigned_to', 'due_date', 'created_at']
     list_filter = [
         ('status', ChoicesDropdownFilter),
@@ -825,7 +921,7 @@ class PersonnelFileAdmin(TenantFilterMixin, ModelAdmin):
 
 
 @admin.register(PersonnelFileEntry)
-class PersonnelFileEntryAdmin(ModelAdmin):
+class PersonnelFileEntryAdmin(BlindRootAdminMixin, ModelAdmin):
     list_display = ['personnel_file', 'entry_number', 'category', 'document', 'document_date', 'created_at']
     list_filter = ['category', ('created_at', RangeDateFilter)]
     search_fields = ['personnel_file__file_number', 'document__title', 'notes']
@@ -835,7 +931,7 @@ class PersonnelFileEntryAdmin(ModelAdmin):
 
 
 @admin.register(DocumentVersion)
-class DocumentVersionAdmin(ModelAdmin):
+class DocumentVersionAdmin(BlindRootAdminMixin, ModelAdmin):
     list_display = ['document', 'version_number', 'file_size_display', 'created_by', 'created_at']
     list_filter = [('created_at', RangeDateFilter)]
     search_fields = ['document__title', 'change_reason']
@@ -930,7 +1026,7 @@ class AuditLogAdmin(ModelAdmin):
 
 
 @admin.register(ScanJob)
-class ScanJobAdmin(ModelAdmin):
+class ScanJobAdmin(BlindRootAdminMixin, ModelAdmin):
     list_display = ['id', 'source_badge', 'status_badge', 'progress_display', 'processed_files', 'total_files', 'started_at', 'completed_at']
     list_filter = [('status', ChoicesDropdownFilter), ('source', ChoicesDropdownFilter), ('started_at', RangeDateFilter)]
     readonly_fields = ['id', 'started_at', 'completed_at', 'progress_display']
@@ -997,7 +1093,7 @@ class TagAdmin(TenantFilterMixin, ModelAdmin):
 
 
 @admin.register(DocumentTag)
-class DocumentTagAdmin(ModelAdmin):
+class DocumentTagAdmin(BlindRootAdminMixin, ModelAdmin):
     list_display = ['document', 'tag', 'added_at', 'added_by']
     list_filter = ['tag', ('added_at', RangeDateFilter)]
     search_fields = ['document__title', 'tag__name']
