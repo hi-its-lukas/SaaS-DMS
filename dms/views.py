@@ -1647,3 +1647,99 @@ def admin_run_cleanup_doctypes(request):
         messages.error(request, f'Fehler: {str(e)}')
     
     return redirect('dms:admin_maintenance')
+
+
+def accept_invite(request, token):
+    """
+    DSGVO-konformer Einladungs-Akzeptanz-Flow.
+    Erstellt Account für eingeladenen Mandanten-Admin mit Einwilligungserfassung.
+    """
+    from .models import TenantInvite, TenantUser
+    from django.contrib.auth.models import User
+    from django.conf import settings
+    from django.utils import timezone
+    from django.contrib.auth import login
+    
+    invite, error = TenantInvite.validate_token(token)
+    
+    if error:
+        return render(request, 'dms/invite_error.html', {'error': error})
+    
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        email = request.POST.get('email', invite.email).strip()
+        password = request.POST.get('password', '')
+        password_confirm = request.POST.get('password_confirm', '')
+        first_name = request.POST.get('first_name', '').strip()
+        last_name = request.POST.get('last_name', '').strip()
+        consent = request.POST.get('consent') == 'on'
+        
+        errors = []
+        
+        if not username:
+            errors.append('Benutzername ist erforderlich.')
+        elif User.objects.filter(username=username).exists():
+            errors.append('Dieser Benutzername ist bereits vergeben.')
+        
+        if not password or len(password) < 8:
+            errors.append('Passwort muss mindestens 8 Zeichen haben.')
+        elif password != password_confirm:
+            errors.append('Passwörter stimmen nicht überein.')
+        
+        if not consent:
+            errors.append('Sie müssen den Datenschutzbestimmungen zustimmen.')
+        
+        if errors:
+            return render(request, 'dms/accept_invite.html', {
+                'invite': invite,
+                'errors': errors,
+                'form_data': request.POST,
+            })
+        
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            first_name=first_name,
+            last_name=last_name,
+        )
+        
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            client_ip = x_forwarded_for.split(',')[0].strip()
+        else:
+            client_ip = request.META.get('REMOTE_ADDR')
+        
+        tenant_user = TenantUser.objects.create(
+            user=user,
+            tenant=invite.tenant,
+            is_admin=True,
+            role='ADMIN',
+            consent_given_at=timezone.now(),
+            consent_version=getattr(settings, 'GDPR_CONSENT_VERSION', '1.0'),
+            consent_ip=client_ip,
+            invited_via=invite,
+        )
+        
+        invite.status = 'ACCEPTED'
+        invite.accepted_at = timezone.now()
+        invite.accepted_by = user
+        invite.save(update_fields=['status', 'accepted_at', 'accepted_by'])
+        
+        invite.tenant.onboarding_status = 'ACTIVE'
+        invite.tenant.save(update_fields=['onboarding_status'])
+        
+        AuditLog.objects.create(
+            action='INVITE_ACCEPTED',
+            user=user,
+            details=f"Einladung angenommen für Mandant {invite.tenant.code}",
+            ip_address=client_ip,
+        )
+        
+        login(request, user)
+        messages.success(request, f'Willkommen bei {invite.tenant.name}! Ihr Account wurde erfolgreich erstellt.')
+        return redirect('dms:index')
+    
+    return render(request, 'dms/accept_invite.html', {
+        'invite': invite,
+    })

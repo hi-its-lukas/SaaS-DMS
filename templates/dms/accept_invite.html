@@ -1,0 +1,282 @@
+{% extends 'dms/base_public.html' %}
+
+{% block title %}Einladung annehmen - {{ invite.tenant.name }}{% endblock %}
+
+{% block content %}
+<div class="invite-container">
+    <div class="invite-card">
+        <div class="invite-header">
+            <span class="material-icons">how_to_reg</span>
+            <h1>Willkommen bei der Personalmappe</h1>
+            <p>Sie wurden als Administrator für <strong>{{ invite.tenant.name }}</strong> eingeladen.</p>
+        </div>
+        
+        {% if errors %}
+        <div class="alert alert-error">
+            <span class="material-icons">error</span>
+            <ul>
+                {% for error in errors %}
+                <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        
+        <form method="post" class="invite-form">
+            {% csrf_token %}
+            
+            <h3>Account-Daten</h3>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="first_name">Vorname</label>
+                    <input type="text" id="first_name" name="first_name" value="{{ form_data.first_name|default:invite.name }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="last_name">Nachname</label>
+                    <input type="text" id="last_name" name="last_name" value="{{ form_data.last_name|default:'' }}" required>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="username">Benutzername</label>
+                <input type="text" id="username" name="username" value="{{ form_data.username|default:'' }}" required autocomplete="username">
+                <small>Wird für die Anmeldung verwendet</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="email">E-Mail-Adresse</label>
+                <input type="email" id="email" name="email" value="{{ form_data.email|default:invite.email }}" required>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="password">Passwort</label>
+                    <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+                    <small>Mindestens 8 Zeichen</small>
+                </div>
+                <div class="form-group">
+                    <label for="password_confirm">Passwort bestätigen</label>
+                    <input type="password" id="password_confirm" name="password_confirm" required minlength="8" autocomplete="new-password">
+                </div>
+            </div>
+            
+            <h3>Datenschutz (DSGVO)</h3>
+            
+            <div class="consent-box">
+                <div class="consent-content">
+                    <h4>Datenschutzerklärung</h4>
+                    <p>Mit der Nutzung der digitalen Personalmappe erklären Sie sich einverstanden, dass:</p>
+                    <ul>
+                        <li>Ihre personenbezogenen Daten (Name, E-Mail, IP-Adresse) zur Bereitstellung des Dienstes verarbeitet werden.</li>
+                        <li>Sie als Administrator für Ihren Mandanten verantwortlich für die Einhaltung der DSGVO bei der Nutzung des Systems sind.</li>
+                        <li>Dokumente und Mitarbeiterdaten ausschließlich innerhalb Ihres Mandanten verarbeitet werden.</li>
+                        <li>Sie jederzeit das Recht auf Auskunft, Berichtigung und Löschung Ihrer Daten haben.</li>
+                    </ul>
+                    <p><strong>Datenverarbeitung:</strong> Ihre Daten werden ausschließlich in der EU verarbeitet und nicht an Dritte weitergegeben.</p>
+                </div>
+                
+                <div class="consent-checkbox">
+                    <input type="checkbox" id="consent" name="consent" required>
+                    <label for="consent">
+                        Ich habe die Datenschutzerklärung gelesen und stimme der Verarbeitung meiner Daten zu.
+                    </label>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-large">
+                <span class="material-icons">check_circle</span>
+                Account erstellen
+            </button>
+        </form>
+        
+        <div class="invite-footer">
+            <p>Einladung gültig bis: {{ invite.expires_at|date:"d.m.Y H:i" }}</p>
+        </div>
+    </div>
+</div>
+
+<style>
+.invite-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
+}
+
+.invite-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    max-width: 600px;
+    width: 100%;
+    overflow: hidden;
+}
+
+.invite-header {
+    background: linear-gradient(135deg, #007e45 0%, #005a32 100%);
+    color: white;
+    padding: 40px;
+    text-align: center;
+}
+
+.invite-header .material-icons {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.9;
+}
+
+.invite-header h1 {
+    margin: 0 0 8px;
+    font-size: 24px;
+}
+
+.invite-header p {
+    margin: 0;
+    opacity: 0.9;
+}
+
+.invite-form {
+    padding: 40px;
+}
+
+.invite-form h3 {
+    margin: 0 0 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e0e0e0;
+    color: #333;
+    font-size: 16px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    color: #333;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 15px;
+    transition: border-color 0.2s;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #007e45;
+    box-shadow: 0 0 0 3px rgba(0, 126, 69, 0.1);
+}
+
+.form-group small {
+    display: block;
+    margin-top: 4px;
+    color: #666;
+    font-size: 12px;
+}
+
+.consent-box {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+}
+
+.consent-content {
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #555;
+}
+
+.consent-content h4 {
+    margin: 0 0 12px;
+    color: #333;
+}
+
+.consent-content ul {
+    margin: 12px 0;
+    padding-left: 20px;
+}
+
+.consent-content li {
+    margin-bottom: 6px;
+}
+
+.consent-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.consent-checkbox input {
+    margin-top: 3px;
+}
+
+.consent-checkbox label {
+    font-size: 14px;
+    color: #333;
+}
+
+.btn-large {
+    width: 100%;
+    padding: 16px;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.invite-footer {
+    padding: 16px 40px;
+    background: #f8f9fa;
+    text-align: center;
+    font-size: 13px;
+    color: #666;
+}
+
+.alert-error {
+    background: #fee;
+    border: 1px solid #f99;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 0 40px 0;
+    display: flex;
+    gap: 12px;
+}
+
+.alert-error .material-icons {
+    color: #d32f2f;
+}
+
+.alert-error ul {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+}
+
+@media (max-width: 600px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .invite-form {
+        padding: 24px;
+    }
+}
+</style>
+{% endblock %}

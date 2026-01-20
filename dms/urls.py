@@ -36,6 +36,9 @@ urlpatterns = [
     # System Logs
     path('logs/', views.system_logs, name='system_logs'),
     
+    # Tenant Onboarding
+    path('einladung/<str:token>/', views.accept_invite, name='accept_invite'),
+    
     # System Maintenance
     path('maintenance/', views.admin_maintenance, name='admin_maintenance'),
     path('maintenance/create-filing-plan/', views.admin_run_create_filing_plan, name='admin_run_create_filing_plan'),

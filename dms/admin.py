@@ -6,7 +6,7 @@ from unfold.admin import ModelAdmin, TabularInline, StackedInline
 from unfold.decorators import display
 from unfold.contrib.filters.admin import RangeDateFilter, DropdownFilter, ChoicesDropdownFilter
 from .models import (
-    Tenant, TenantUser,
+    Tenant, TenantUser, TenantInvite,
     Department, CostCenter, Employee, DocumentType, Document, 
     ProcessedFile, Task, SystemLog, SystemSettings,
     ImportedLeaveRequest, ImportedTimesheet,
@@ -85,21 +85,42 @@ class TenantUserInline(TabularInline):
 
 @admin.register(Tenant)
 class TenantAdmin(ModelAdmin):
-    list_display = ['code', 'name', 'ingest_email', 'is_active_badge', 'user_count', 'created_at']
-    list_filter = ['is_active']
-    search_fields = ['code', 'name', 'ingest_token']
+    list_display = ['code', 'name', 'onboarding_status_badge', 'contact_email', 'is_active_badge', 'user_count', 'created_at']
+    list_filter = ['is_active', ('onboarding_status', ChoicesDropdownFilter)]
+    search_fields = ['code', 'name', 'contact_email', 'contact_name']
     inlines = [TenantUserInline]
-    readonly_fields = ['ingest_token', 'ingest_email_display']
+    readonly_fields = ['ingest_token', 'ingest_email_display', 'created_at', 'created_by']
+    actions = ['send_invite_action']
     
     fieldsets = (
         ('Mandant', {
-            'fields': ('code', 'name', 'description', 'is_active')
+            'fields': ('code', 'name', 'description', 'is_active', 'onboarding_status')
+        }),
+        ('Kontakt (DSGVO-Minimum)', {
+            'fields': ('contact_name', 'contact_email'),
+            'description': 'Nur minimale Kontaktdaten für die Einladung. Weitere Daten werden vom Mandanten selbst gepflegt.'
         }),
         ('E-Mail-Ingest', {
             'fields': ('ingest_token', 'ingest_email_display'),
             'description': 'Dokumente an diese E-Mail-Adresse senden, um sie automatisch diesem Mandanten zuzuordnen.'
         }),
+        ('Verwaltung', {
+            'fields': ('created_at', 'created_by'),
+            'classes': ('collapse',)
+        }),
     )
+    
+    @display(
+        description="Onboarding",
+        label={
+            "Erstellt": "secondary",
+            "Einladung gesendet": "warning",
+            "Aktiv": "success",
+            "Gesperrt": "danger",
+        }
+    )
+    def onboarding_status_badge(self, obj):
+        return obj.get_onboarding_status_display()
     
     @display(description="Status", label={"Aktiv": "success", "Inaktiv": "danger"})
     def is_active_badge(self, obj):
@@ -121,6 +142,64 @@ class TenantAdmin(ModelAdmin):
         return obj.users.count()
     user_count.short_description = 'Benutzer'
     
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+    
+    @admin.action(description="Einladung an Kontakt senden")
+    def send_invite_action(self, request, queryset):
+        from django.contrib import messages
+        from django.core.mail import send_mail
+        from django.conf import settings
+        
+        sent = 0
+        for tenant in queryset:
+            if not tenant.contact_email:
+                messages.warning(request, f"{tenant.name}: Keine Kontakt-E-Mail hinterlegt.")
+                continue
+            
+            invite, raw_token = TenantInvite.create_invite(
+                tenant=tenant,
+                email=tenant.contact_email,
+                name=tenant.contact_name,
+                created_by=request.user,
+            )
+            
+            invite_url = f"{settings.SITE_URL}/einladung/{raw_token}/"
+            
+            try:
+                send_mail(
+                    subject=f"Einladung zur Personalmappe - {tenant.name}",
+                    message=f"""Guten Tag {tenant.contact_name or ''},
+
+Sie wurden als Administrator für die digitale Personalmappe von {tenant.name} eingeladen.
+
+Klicken Sie auf folgenden Link, um Ihren Account zu erstellen:
+{invite_url}
+
+Dieser Link ist 7 Tage gültig.
+
+Bei Fragen wenden Sie sich bitte an Ihren Ansprechpartner.
+
+Mit freundlichen Grüßen
+Ihr DMS-Team
+""",
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[tenant.contact_email],
+                    fail_silently=False,
+                )
+                tenant.onboarding_status = 'INVITED'
+                tenant.save(update_fields=['onboarding_status'])
+                sent += 1
+            except Exception as e:
+                messages.error(request, f"{tenant.name}: E-Mail-Versand fehlgeschlagen - {e}")
+                invite.status = 'REVOKED'
+                invite.save(update_fields=['status'])
+        
+        if sent:
+            messages.success(request, f"{sent} Einladung(en) erfolgreich gesendet.")
+    
     def has_module_permission(self, request):
         return request.user.is_superuser
     
@@ -128,6 +207,35 @@ class TenantAdmin(ModelAdmin):
         return request.user.is_superuser
     
     def has_add_permission(self, request):
+        return request.user.is_superuser
+
+
+@admin.register(TenantInvite)
+class TenantInviteAdmin(ModelAdmin):
+    list_display = ['tenant', 'email', 'status_badge', 'expires_at', 'created_at', 'created_by']
+    list_filter = [('status', ChoicesDropdownFilter), 'tenant']
+    search_fields = ['email', 'name', 'tenant__name', 'tenant__code']
+    readonly_fields = ['token_hash', 'created_at', 'created_by', 'accepted_at', 'accepted_by']
+    
+    @display(
+        description="Status",
+        label={
+            "Ausstehend": "warning",
+            "Angenommen": "success",
+            "Abgelaufen": "secondary",
+            "Widerrufen": "danger",
+        }
+    )
+    def status_badge(self, obj):
+        return obj.get_status_display()
+    
+    def has_add_permission(self, request):
+        return False
+    
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+    
+    def has_view_permission(self, request, obj=None):
         return request.user.is_superuser
 
 

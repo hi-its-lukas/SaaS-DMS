@@ -367,4 +367,16 @@ MFA_DOMAIN = os.environ.get('MFA_DOMAIN', os.environ.get('REPLIT_DEV_DOMAIN', 'l
 MFA_SITE_TITLE = "DMS - Dokumentenmanagementsystem"
 MFA_METHODS = ["FIDO2", "TOTP", "recovery"]
 MFA_FIDO2_USER_VERIFICATION = "preferred"
+
+SITE_URL = os.environ.get('SITE_URL', f"https://{os.environ.get('REPLIT_DEV_DOMAIN', 'localhost:5000')}")
+
+EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.office365.com')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() == 'true'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@dms.cloud')
+
+GDPR_CONSENT_VERSION = os.environ.get('GDPR_CONSENT_VERSION', '1.0')
 MFA_MAX_KEYS_PER_ACCOUNT = 5

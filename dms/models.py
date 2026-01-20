@@ -28,11 +28,36 @@ def version_upload_path(instance, filename):
 
 
 class Tenant(models.Model):
+    ONBOARDING_STATUS_CHOICES = [
+        ('CREATED', 'Erstellt'),
+        ('INVITED', 'Einladung gesendet'),
+        ('ACTIVE', 'Aktiv'),
+        ('SUSPENDED', 'Gesperrt'),
+    ]
+    
     code = models.CharField(max_length=20, unique=True, verbose_name="Mandanten-Code",
                            help_text="Sage-Ordnername (z.B. 0000001)")
     name = models.CharField(max_length=200, verbose_name="Mandantenname")
     description = models.TextField(blank=True, verbose_name="Beschreibung")
     is_active = models.BooleanField(default=True, verbose_name="Aktiv")
+    
+    onboarding_status = models.CharField(
+        max_length=20, 
+        choices=ONBOARDING_STATUS_CHOICES, 
+        default='CREATED',
+        verbose_name="Onboarding-Status"
+    )
+    contact_email = models.EmailField(
+        blank=True, 
+        verbose_name="Kontakt-E-Mail",
+        help_text="E-Mail des ersten Mandanten-Administrators"
+    )
+    contact_name = models.CharField(
+        max_length=200, 
+        blank=True, 
+        verbose_name="Kontaktperson"
+    )
+    
     ingest_token = models.CharField(
         max_length=12, 
         unique=True, 
@@ -44,6 +69,14 @@ class Tenant(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='created_tenants',
+        verbose_name="Erstellt von"
+    )
 
     def __str__(self):
         return f"{self.code} - {self.name}"
@@ -60,10 +93,117 @@ class Tenant(models.Model):
         verbose_name_plural = "Mandanten"
 
 
+class TenantInvite(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Ausstehend'),
+        ('ACCEPTED', 'Angenommen'),
+        ('EXPIRED', 'Abgelaufen'),
+        ('REVOKED', 'Widerrufen'),
+    ]
+    
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='invites')
+    email = models.EmailField(verbose_name="E-Mail-Adresse")
+    name = models.CharField(max_length=200, blank=True, verbose_name="Name")
+    
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    expires_at = models.DateTimeField(verbose_name="Gültig bis")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True,
+        related_name='sent_invites',
+        verbose_name="Erstellt von"
+    )
+    
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    accepted_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='accepted_invites',
+        verbose_name="Angenommen von"
+    )
+    
+    class Meta:
+        verbose_name = "Mandanten-Einladung"
+        verbose_name_plural = "Mandanten-Einladungen"
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Einladung für {self.email} @ {self.tenant.code}"
+    
+    @property
+    def is_valid(self):
+        from django.utils import timezone
+        return self.status == 'PENDING' and self.expires_at > timezone.now()
+    
+    @classmethod
+    def create_invite(cls, tenant, email, name, created_by, expires_days=7):
+        import secrets
+        import hashlib
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        
+        invite = cls.objects.create(
+            tenant=tenant,
+            email=email,
+            name=name,
+            token_hash=token_hash,
+            expires_at=timezone.now() + timedelta(days=expires_days),
+            created_by=created_by,
+        )
+        return invite, raw_token
+    
+    @classmethod
+    def validate_token(cls, raw_token):
+        import hashlib
+        from django.utils import timezone
+        
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        try:
+            invite = cls.objects.get(token_hash=token_hash)
+            if invite.status != 'PENDING':
+                return None, "Einladung wurde bereits verwendet oder widerrufen."
+            if invite.expires_at < timezone.now():
+                invite.status = 'EXPIRED'
+                invite.save(update_fields=['status'])
+                return None, "Einladung ist abgelaufen."
+            return invite, None
+        except cls.DoesNotExist:
+            return None, "Ungültiger Einladungslink."
+
+
 class TenantUser(models.Model):
+    ROLE_CHOICES = [
+        ('ADMIN', 'Administrator'),
+        ('USER', 'Benutzer'),
+    ]
+    
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='tenant_memberships')
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='users')
     is_admin = models.BooleanField(default=False, verbose_name="Mandanten-Admin")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='USER', verbose_name="Rolle")
+    
+    consent_given_at = models.DateTimeField(null=True, blank=True, verbose_name="Einwilligung erteilt am")
+    consent_version = models.CharField(max_length=20, blank=True, verbose_name="Einwilligungsversion")
+    consent_ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="IP bei Einwilligung")
+    
+    invited_via = models.ForeignKey(
+        TenantInvite, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        verbose_name="Eingeladen über"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
