@@ -26,9 +26,14 @@ else:
     print("FEHLER: ALLOWED_HOSTS muss in Production gesetzt sein!")
     sys.exit(1)
 
-_csrf_origins = ['https://*.replit.dev', 'https://*.repl.co']
+_csrf_origins = [
+    'https://*.replit.dev', 
+    'https://*.repl.co',
+    'https://*.azurecontainerapps.io',
+    'https://*.westeurope.azurecontainerapps.io',
+]
 if os.environ.get('CSRF_TRUSTED_ORIGINS'):
-    _csrf_origins.extend(os.environ.get('CSRF_TRUSTED_ORIGINS').split(','))
+    _csrf_origins.extend([o.strip() for o in os.environ.get('CSRF_TRUSTED_ORIGINS').split(',') if o.strip()])
 CSRF_TRUSTED_ORIGINS = _csrf_origins
 
 X_FRAME_OPTIONS = 'SAMEORIGIN'
