@@ -46,6 +46,12 @@ The DMS is built as a multi-tenant SaaS application using Django.
     - Fernet encryption for files and encrypted API keys in the database.
     - Password protection and role-based access control.
     - **Multi-Factor Authentication (MFA)**: Supports FIDO2/WebAuthn (Passkeys), TOTP (Authenticator apps), and recovery codes. MFA is enforced for all users.
+- **GDPR-Compliant Tenant Onboarding**:
+    - **Secure Invitations**: `TenantInvite` model with SHA-256 token hashing, 7-day expiration, single-use enforcement with atomic transactions.
+    - **Consent Tracking**: Records consent version, timestamp, IP address, and consent text in AuditLog for GDPR audit trail.
+    - **Onboarding Status**: Tenants track status (CREATED -> INVITED -> ACTIVE) with automatic transitions.
+    - **Previous Invite Revocation**: New invitations automatically revoke pending invites for the same tenant/email.
+    - **Email Flow**: `send_invite_action` in TenantAdmin sends tokenized invitation links (`/einladung/<token>/`).
 - **Document Management Features (d.3 one & Paperless-ngx inspired)**:
     - **File Logic**: Hierarchical file plans (`FileCategory`) with retention periods (based on creation, termination, or document date). Supports `PersonnelFile` and `PersonnelFileEntry` for structured HR document management.
     - **Tags and Matching Rules**: Hierarchical tags with color-coding, and automated document classification via `MatchingRule` (ANY, ALL, EXACT, REGEX, FUZZY algorithms).

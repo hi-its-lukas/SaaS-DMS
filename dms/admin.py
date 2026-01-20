@@ -159,6 +159,12 @@ class TenantAdmin(ModelAdmin):
                 messages.warning(request, f"{tenant.name}: Keine Kontakt-E-Mail hinterlegt.")
                 continue
             
+            TenantInvite.objects.filter(
+                tenant=tenant,
+                email=tenant.contact_email,
+                status='PENDING'
+            ).update(status='REVOKED')
+            
             invite, raw_token = TenantInvite.create_invite(
                 tenant=tenant,
                 email=tenant.contact_email,

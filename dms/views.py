@@ -1653,12 +1653,14 @@ def accept_invite(request, token):
     """
     DSGVO-konformer Einladungs-Akzeptanz-Flow.
     Erstellt Account für eingeladenen Mandanten-Admin mit Einwilligungserfassung.
+    Verwendet Transaktion mit select_for_update um Race-Conditions zu verhindern.
     """
-    from .models import TenantInvite, TenantUser
+    from .models import TenantInvite, TenantUser, AuditLog
     from django.contrib.auth.models import User
     from django.conf import settings
     from django.utils import timezone
     from django.contrib.auth import login
+    from django.db import transaction
     
     invite, error = TenantInvite.validate_token(token)
     
@@ -1696,45 +1698,67 @@ def accept_invite(request, token):
                 'form_data': request.POST,
             })
         
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=password,
-            first_name=first_name,
-            last_name=last_name,
-        )
-        
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
             client_ip = x_forwarded_for.split(',')[0].strip()
         else:
             client_ip = request.META.get('REMOTE_ADDR')
         
-        tenant_user = TenantUser.objects.create(
-            user=user,
-            tenant=invite.tenant,
-            is_admin=True,
-            role='ADMIN',
-            consent_given_at=timezone.now(),
-            consent_version=getattr(settings, 'GDPR_CONSENT_VERSION', '1.0'),
-            consent_ip=client_ip,
-            invited_via=invite,
-        )
+        consent_text = """Mit der Nutzung der digitalen Personalmappe erklären Sie sich einverstanden, dass:
+- Ihre personenbezogenen Daten (Name, E-Mail, IP-Adresse) zur Bereitstellung des Dienstes verarbeitet werden.
+- Sie als Administrator für Ihren Mandanten verantwortlich für die Einhaltung der DSGVO bei der Nutzung des Systems sind.
+- Dokumente und Mitarbeiterdaten ausschließlich innerhalb Ihres Mandanten verarbeitet werden.
+- Sie jederzeit das Recht auf Auskunft, Berichtigung und Löschung Ihrer Daten haben.
+Datenverarbeitung: Ihre Daten werden ausschließlich in der EU verarbeitet und nicht an Dritte weitergegeben."""
         
-        invite.status = 'ACCEPTED'
-        invite.accepted_at = timezone.now()
-        invite.accepted_by = user
-        invite.save(update_fields=['status', 'accepted_at', 'accepted_by'])
-        
-        invite.tenant.onboarding_status = 'ACTIVE'
-        invite.tenant.save(update_fields=['onboarding_status'])
-        
-        AuditLog.objects.create(
-            action='INVITE_ACCEPTED',
-            user=user,
-            details=f"Einladung angenommen für Mandant {invite.tenant.code}",
-            ip_address=client_ip,
-        )
+        try:
+            with transaction.atomic():
+                locked_invite = TenantInvite.objects.select_for_update().get(
+                    pk=invite.pk, status='PENDING'
+                )
+                
+                user = User.objects.create_user(
+                    username=username,
+                    email=email,
+                    password=password,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+                
+                consent_version = getattr(settings, 'GDPR_CONSENT_VERSION', '1.0')
+                
+                tenant_user = TenantUser.objects.create(
+                    user=user,
+                    tenant=locked_invite.tenant,
+                    is_admin=True,
+                    role='ADMIN',
+                    consent_given_at=timezone.now(),
+                    consent_version=consent_version,
+                    consent_ip=client_ip,
+                    invited_via=locked_invite,
+                )
+                
+                locked_invite.status = 'ACCEPTED'
+                locked_invite.accepted_at = timezone.now()
+                locked_invite.accepted_by = user
+                locked_invite.save(update_fields=['status', 'accepted_at', 'accepted_by'])
+                
+                locked_invite.tenant.onboarding_status = 'ACTIVE'
+                locked_invite.tenant.save(update_fields=['onboarding_status'])
+                
+                AuditLog.objects.create(
+                    action='INVITE_ACCEPTED',
+                    user=user,
+                    details=f"Einladung angenommen für Mandant {locked_invite.tenant.code}. "
+                           f"DSGVO-Einwilligung Version {consent_version} erteilt. "
+                           f"Einwilligungstext: {consent_text[:200]}...",
+                    ip_address=client_ip,
+                )
+                
+        except TenantInvite.DoesNotExist:
+            return render(request, 'dms/invite_error.html', {
+                'error': 'Diese Einladung wurde bereits verwendet oder ist ungültig.'
+            })
         
         login(request, user)
         messages.success(request, f'Willkommen bei {invite.tenant.name}! Ihr Account wurde erfolgreich erstellt.')
