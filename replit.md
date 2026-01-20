@@ -16,9 +16,9 @@ The DMS is built as a multi-tenant SaaS application using Django.
 
 - **Single URL Architecture**: All tenants access the system via a single URL (e.g., `app.dms.cloud`).
 - **Tenant Isolation**: Achieved through `TenantMiddleware` (identifies tenant from logged-in user) and `TenantAwareManager` (automatically filters QuerySets by tenant). Thread-local storage maintains tenant context across requests.
-- **Role-Based Access Control**:
-    - **Root-Admin**: Full, global access across all tenants.
-    - **Tenant-Admin**: Manages data only for their specific tenant.
+- **Role-Based Access Control** (Blind Root-Admin Pattern):
+    - **Root-Admin**: Sees ONLY tenant overview (Tenant, TenantInvite, TenantUser) and system settings. Cannot access documents, employees, or other tenant-specific data. Dashboard shows tenant counts and pending invites only.
+    - **Tenant-Admin**: Manages data only for their specific tenant. Full access to documents, employees, and personnel files within their tenant.
     - **User**: Accesses documents within their assigned tenant only.
 - **Data Security**: All core models include a `tenant` field. `TenantAwareManager` ensures automatic filtering of all database queries.
 
