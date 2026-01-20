@@ -3,9 +3,20 @@ set -e
 
 echo "DMS wird gestartet..."
 
+# Datenbank-Host aus Umgebungsvariable oder Azure-Default
+DB_HOST="${DB_HOST:-psql-personalmappe.postgres.database.azure.com}"
+DB_PORT="${DB_PORT:-5432}"
+
 # Warte auf Datenbank
-echo "Warte auf Datenbank..."
-while ! nc -z db 5432; do
+echo "Warte auf Datenbank ($DB_HOST:$DB_PORT)..."
+max_retries=30
+retry_count=0
+while ! nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; do
+    retry_count=$((retry_count + 1))
+    if [ $retry_count -ge $max_retries ]; then
+        echo "WARNUNG: Datenbank nicht erreichbar nach $max_retries Versuchen. Fahre trotzdem fort..."
+        break
+    fi
     sleep 1
 done
 echo "Datenbank ist bereit."
