@@ -1,7 +1,14 @@
 #!/bin/bash
 set -e
 
+# Besseres Error-Logging
+exec 2>&1
+trap 'echo "FEHLER in Zeile $LINENO: $BASH_COMMAND" >&2' ERR
+
 echo "DMS wird gestartet..."
+echo "Python Version: $(python --version)"
+echo "Django Check..."
+python manage.py check || { echo "Django Check fehlgeschlagen!"; exit 1; }
 
 # Datenbank-Host aus Umgebungsvariable oder Azure-Default
 DB_HOST="${DB_HOST:-psql-personalmappe.postgres.database.azure.com}"
