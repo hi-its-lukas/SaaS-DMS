@@ -976,9 +976,9 @@ class AccessPermissionAdmin(TenantFilterMixin, ModelAdmin):
         return obj.user or obj.group
     get_target.short_description = 'Berechtigter'
     
-    def get_object(self, obj):
+    def get_target_object(self, obj):
         return obj.category or obj.personnel_file or obj.department
-    get_object.short_description = 'Ziel'
+    get_target_object.short_description = 'Ziel'
 
 
 @admin.register(AuditLog)
