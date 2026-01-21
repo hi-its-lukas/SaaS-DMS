@@ -1,0 +1,161 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block content %}
+<style>
+.admin-dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 32px;
+}
+@media (max-width: 1200px) {
+    .admin-dashboard-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+</style>
+
+<div id="content-main">
+    
+    <div class="admin-dashboard-grid">
+        <div style="background: linear-gradient(135deg, #0066b3, #00a3a3); border-radius: 16px; padding: 28px; color: white;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div style="width: 64px; height: 64px; background: rgba(255,255,255,0.2); border-radius: 16px; display: flex; align-items: center; justify-content: center;">
+                    <span class="material-icons" style="font-size: 32px;">folder_special</span>
+                </div>
+                <div>
+                    <div style="font-size: 14px; opacity: 0.9;">Willkommen</div>
+                    <div style="font-size: 24px; font-weight: 700;">DMS Administration</div>
+                </div>
+            </div>
+            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
+                <a href="{% url 'dms:index' %}" style="color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; background: rgba(255,255,255,0.15); padding: 10px 18px; border-radius: 8px;">
+                    <span class="material-icons" style="font-size: 18px;">arrow_back</span>
+                    Zurück zur Anwendung
+                </a>
+            </div>
+        </div>
+        
+        <div style="background: white; border: 1px solid #e0e0e0; border-radius: 16px; padding: 28px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+                <div style="width: 40px; height: 40px; background: #e3f2fd; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                    <span class="material-icons" style="color: #0066b3; font-size: 22px;">flash_on</span>
+                </div>
+                <span style="font-weight: 600; font-size: 16px;">Schnellzugriff</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <a href="{% url 'dms:sage_sync_dashboard' %}" style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #f8f9fa; border-radius: 10px; color: #1a1a1a; text-decoration: none; font-size: 14px; transition: all 0.15s;">
+                    <span class="material-icons" style="font-size: 20px; color: #00897b;">sync</span>
+                    Sage Cloud Synchronisation
+                </a>
+                <a href="{% url 'admin:dms_systemsettings_changelist' %}" style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #f8f9fa; border-radius: 10px; color: #1a1a1a; text-decoration: none; font-size: 14px; transition: all 0.15s;">
+                    <span class="material-icons" style="font-size: 20px; color: #5c6bc0;">settings</span>
+                    Systemeinstellungen
+                </a>
+                <a href="{% url 'dms:system_logs' %}" style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #f8f9fa; border-radius: 10px; color: #1a1a1a; text-decoration: none; font-size: 14px; transition: all 0.15s;">
+                    <span class="material-icons" style="font-size: 20px; color: #ff7043;">history</span>
+                    Systemprotokoll (Live)
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {% if app_list %}
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 24px;">
+        {% for app in app_list %}
+            <div style="background: white; border: 1px solid #e0e0e0; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                <div style="background: {% if app.app_label == 'dms' %}linear-gradient(135deg, #0066b3, #0077c8){% elif app.app_label == 'auth' %}linear-gradient(135deg, #5c6bc0, #7986cb){% elif app.app_label == 'django_celery_beat' %}linear-gradient(135deg, #00897b, #26a69a){% else %}linear-gradient(135deg, #78909c, #90a4ae){% endif %}; padding: 18px 24px; color: white;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span class="material-icons" style="font-size: 24px;">
+                            {% if app.app_label == 'dms' %}folder_shared
+                            {% elif app.app_label == 'auth' %}admin_panel_settings
+                            {% elif app.app_label == 'django_celery_beat' %}schedule
+                            {% else %}apps{% endif %}
+                        </span>
+                        <span style="font-weight: 600; font-size: 16px;">{{ app.name }}</span>
+                    </div>
+                </div>
+                <div style="padding: 8px;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tbody>
+                            {% for model in app.models %}
+                            <tr style="border-bottom: 1px solid #f0f0f0;">
+                                <td style="padding: 12px 16px; width: 50%;">
+                                    <span style="display: flex; align-items: center; gap: 10px;">
+                                        <span class="material-icons" style="font-size: 18px; color: #5f6368;">
+                                            {% if 'employee' in model.object_name|lower %}person
+                                            {% elif 'document' in model.object_name|lower %}description
+                                            {% elif 'file' in model.object_name|lower %}folder
+                                            {% elif 'tenant' in model.object_name|lower %}business
+                                            {% elif 'user' in model.object_name|lower %}person
+                                            {% elif 'group' in model.object_name|lower %}group
+                                            {% elif 'log' in model.object_name|lower %}history
+                                            {% elif 'setting' in model.object_name|lower %}settings
+                                            {% elif 'task' in model.object_name|lower %}task_alt
+                                            {% elif 'permission' in model.object_name|lower %}lock
+                                            {% elif 'email' in model.object_name|lower %}email
+                                            {% elif 'category' in model.object_name|lower %}category
+                                            {% elif 'department' in model.object_name|lower %}corporate_fare
+                                            {% elif 'cost' in model.object_name|lower %}attach_money
+                                            {% elif 'leave' in model.object_name|lower %}beach_access
+                                            {% elif 'time' in model.object_name|lower %}schedule
+                                            {% elif 'version' in model.object_name|lower %}history
+                                            {% elif 'interval' in model.object_name|lower %}timer
+                                            {% elif 'crontab' in model.object_name|lower %}schedule
+                                            {% elif 'periodic' in model.object_name|lower %}repeat
+                                            {% elif 'tag' in model.object_name|lower %}label
+                                            {% elif 'match' in model.object_name|lower %}auto_fix_high
+                                            {% elif 'scan' in model.object_name|lower %}document_scanner
+                                            {% elif 'audit' in model.object_name|lower %}verified
+                                            {% else %}article{% endif %}
+                                        </span>
+                                        {% if model.admin_url %}
+                                            <a href="{{ model.admin_url }}" style="font-weight: 500; color: #1a1a1a; text-decoration: none;">{{ model.name }}</a>
+                                        {% else %}
+                                            <span style="color: #9e9e9e;">{{ model.name }}</span>
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td style="padding: 12px 8px; text-align: center;">
+                                    {% if model.add_url %}
+                                        <a href="{{ model.add_url }}" style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: #e8f5e9; border-radius: 8px; color: #2e7d32; text-decoration: none;" title="Hinzufügen">
+                                            <span class="material-icons" style="font-size: 18px;">add</span>
+                                        </a>
+                                    {% else %}
+                                        <span style="color: #e0e0e0;">-</span>
+                                    {% endif %}
+                                </td>
+                                <td style="padding: 12px 8px; text-align: center;">
+                                    {% if model.admin_url %}
+                                        <a href="{{ model.admin_url }}" style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: #e3f2fd; border-radius: 8px; color: #1976d2; text-decoration: none;" title="Liste anzeigen">
+                                            <span class="material-icons" style="font-size: 18px;">list</span>
+                                        </a>
+                                    {% else %}
+                                        <span style="color: #e0e0e0;">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    {% else %}
+        <p>{% trans "You don't have permission to view or edit anything." %}</p>
+    {% endif %}
+</div>
+
+<style>
+#content-main a:hover {
+    opacity: 0.85;
+}
+#content-main table tr:last-child {
+    border-bottom: none !important;
+}
+</style>
+{% endblock %}
+
+{% block sidebar %}{% endblock %}
