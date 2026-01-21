@@ -1,0 +1,44 @@
+Das Problem, dass der Container in Azure nicht startet, liegt höchstwahrscheinlich an einer Kombination aus fehlenden Berechtigungen für das Startskript, der Port-Konfiguration und potenziell den Host-Einstellungen in Django.
+
+Hier ist die Analyse basierend auf den hochgeladenen Dateien:
+
+1. Das Hauptproblem: entrypoint.sh Berechtigungen & Format
+Azure Container Apps (Linux) benötigen oft explizite Ausführungsrechte für Skripte. Wenn das Skript auf Windows erstellt wurde (was durch die .bat und .ps1 Dateien im Ordner scripts/ nahegelegt wird), hat es oft falsche Zeilenumbrüche (CRLF statt LF) und keine Ausführungsrechte.
+
+Befund: In Dockerfile wird entrypoint.sh kopiert, aber es wird kein chmod +x ausgeführt.
+
+Folge: Der Container startet, versucht das Skript auszuführen, erhält "Permission denied" und stürzt sofort ab. Das führt zu dem "Verbindung wird hergestellt..." Loop im Log-Stream.
+
+Lösung im Dockerfile: Fügen Sie RUN chmod +x /app/entrypoint.sh hinzu.
+
+Dockerfile
+# ... (in Ihrem Dockerfile)
+COPY entrypoint.sh .
+RUN sed -i 's/\r$//g' /app/entrypoint.sh && chmod +x /app/entrypoint.sh  <-- WICHTIG
+# ...
+(Der sed Befehl entfernt auch Windows-Zeilenumbrüche \r, falls vorhanden, was oft zu Fehlern führt wie /bin/bash^M: bad interpreter).
+
+2. Port-Konfiguration (Azure erwartet Port 80)
+Standardmäßig lauscht Azure App Service auf Port 80. Wenn Ihr Django-Container (z.B. Gunicorn oder Uvicorn) auf Port 8000 startet, kann Azure nicht prüfen, ob der Container läuft ("Health Check fails"), und startet ihn immer wieder neu.
+
+Prüfung: Ich muss sehen, auf welchem Port Ihr entrypoint.sh den Server startet.
+
+Lösung:
+
+Entweder im Azure Portal unter "Configuration" (Environment Variables) die Variable WEBSITES_PORT auf 8000 setzen.
+
+Oder den Startbefehl im entrypoint.sh so ändern, dass er auf Port 80 bindet (0.0.0.0:80).
+
+3. ALLOWED_HOSTS in settings.py
+Ein häufiger Fehler bei Django in Azure ist, dass der Hostname der Azure-Website (z.B. myapp.azurewebsites.net) nicht in den ALLOWED_HOSTS steht.
+
+Befund: Der Log-Fehler im Screenshot deutet oft auf einen sofortigen Absturz hin. Wenn Django wegen DisallowedHost abstürzt, sieht man das in den Application Logs, aber der Stream bleibt oft hängen.
+
+Lösung: Stellen Sie sicher, dass settings.py so konfiguriert ist, dass es die Azure-URL akzeptiert.
+
+Python
+# In dms_project/settings.py
+import os
+
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+# Fügen Sie in Azure eine Env-Var hinzu: ALLOWED_HOSTS = myapp.azurewebsites.net
