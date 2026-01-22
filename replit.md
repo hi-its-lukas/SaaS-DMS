@@ -30,14 +30,27 @@ Major refactoring for Cloud-Native SaaS architecture:
 - SystemLog now has `tenant` field for log isolation
 - AES-GCM streaming encryption with length-prefixed format
 - IP address masking for GDPR compliance
+- Tenant-specific DEK (Data Encryption Key) with KEK (Master Key) wrapping
+- Each Tenant has its own 256-bit AES encryption key
 
 ### API Endpoints
 - `POST /api/v1/ingest/document/` - Document upload with token auth
 - `GET /api/v1/health/` - Health check
 - `GET /api/v1/tenant/` - Tenant info for authenticated token
 
-### Removed Samba Dependencies
+### Azure Blob Storage Integration
+- `scan_sage_archive` now supports Azure Blob Storage
+- Auto-detection: Uses Azure if configured, falls back to local filesystem
+- Azure structure: `sage-archive/{tenant_code}/{YYYYMM}/{filename}`
+- New module: `dms/azure_storage.py` with blob utilities
+
+### Removed Dependencies
 - Deleted: `generate_samba_config.py`, `map_shares.bat`, `map_shares.ps1`
+- Removed: `scan_manual_input` task (SaaS uses API ingest instead)
+- Removed: `MANUAL_INPUT_PATH` setting
+
+### Migration Commands
+- `migrate_tenants_to_companies`: Converts existing Tenants to new Company structure
 
 ## System Architecture
 
