@@ -7,7 +7,7 @@ import (
         "sync"
         "time"
 
-        "github.com/dms/sage-sync-agent/internal/queue"
+        "github.com/dms/dms-sync-agent/internal/queue"
         "github.com/fsnotify/fsnotify"
         "github.com/rs/zerolog/log"
 )

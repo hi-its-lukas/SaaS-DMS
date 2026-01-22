@@ -266,9 +266,9 @@ class TenantAdmin(ModelAdmin):
             'fields': ('ingest_token', 'ingest_email_display'),
             'description': 'Dokumente an diese E-Mail-Adresse senden, um sie automatisch diesem Mandanten zuzuordnen.'
         }),
-        ('Sage Sync Agent Status', {
+        ('DMS Sync Agent Status', {
             'fields': ('agent_last_seen', 'agent_version', 'agent_status', 'agent_queue_size', 'agent_ip'),
-            'description': 'Status des installierten Sage Sync Agents auf dem Kundenserver.',
+            'description': 'Status des installierten DMS Sync Agents auf dem Kundenserver.',
             'classes': ('collapse',)
         }),
         ('Verwaltung', {

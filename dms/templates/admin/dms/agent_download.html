@@ -6,7 +6,7 @@
     <div style="background: linear-gradient(135deg, #007e45 0%, #005c32 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 30px;">
         <h1 style="margin: 0 0 10px 0; font-size: 28px;">
             <span style="margin-right: 10px;">📦</span>
-            Sage Sync Agent Download
+            DMS Sync Agent Download
         </h1>
         <p style="margin: 0; opacity: 0.9;">
             Laden Sie den vorkonfigurierten Agent für Ihre Kunden herunter.
@@ -14,8 +14,8 @@
     </div>
 
     <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
-        <h3 style="margin-top: 0;">ℹ️ Was ist der Sage Sync Agent?</h3>
-        <p>Der Sage Sync Agent ist ein Windows-Dienst, der auf dem Server Ihres Kunden installiert wird. Er überwacht den lokalen Sage-Exportordner und lädt neue Dokumente automatisch in das DMS hoch.</p>
+        <h3 style="margin-top: 0;">ℹ️ Was ist der DMS Sync Agent?</h3>
+        <p>Der DMS Sync Agent ist ein Windows-Dienst, der auf dem Server Ihres Kunden installiert wird. Er überwacht lokale Exportordner und lädt neue Dokumente automatisch in das DMS hoch.</p>
         
         <h4>Funktionen:</h4>
         <ul>
@@ -88,13 +88,13 @@
 
     <div style="margin-top: 30px; padding: 20px; background: #e7f5ff; border-radius: 8px; border-left: 4px solid #007e45;">
         <h4 style="margin-top: 0;">🔧 Für Entwickler: Agent selbst kompilieren</h4>
-        <p>Der Agent-Quellcode befindet sich im Ordner <code>sage-sync-agent/</code>.</p>
+        <p>Der Agent-Quellcode befindet sich im Ordner <code>dms-sync-agent/</code>.</p>
         <pre style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 6px; overflow-x: auto;">
 # Für Windows (Cross-Compile von Linux):
-GOOS=windows GOARCH=amd64 go build -o SageSyncAgent.exe ./cmd/agent
+GOOS=windows GOARCH=amd64 go build -o DMSSyncAgent.exe ./cmd/agent
 
 # Auf Windows direkt:
-go build -o SageSyncAgent.exe ./cmd/agent</pre>
+go build -o DMSSyncAgent.exe ./cmd/agent</pre>
     </div>
 </div>
 {% endblock %}

@@ -52,13 +52,13 @@ Major refactoring for Cloud-Native SaaS architecture:
 ### Migration Commands
 - `migrate_tenants_to_companies`: Converts existing Tenants to new Company structure
 
-### Sage Sync Agent (Go)
-- Windows-Dienst zur lokalen Sage-Ordner-Überwachung
-- Quellcode in `sage-sync-agent/` (Go 1.25)
+### DMS Sync Agent (Go)
+- Windows-Dienst zur lokalen Ordner-Überwachung
+- Quellcode in `dms-sync-agent/` (Go 1.25)
 - Features: fsnotify Watcher, BoltDB Queue, Windows Credential Manager
 - Heartbeat-Endpoint: `POST /api/v1/agent/heartbeat/`
 - Admin-Download: `/admin/dms/agent-download/` (Root-Admin only)
-- Build: `cd sage-sync-agent && make build-windows`
+- Build: `cd dms-sync-agent && make build-windows`
 - Agent-Status wird im Tenant-Admin angezeigt (Online/Offline)
 
 ## System Architecture

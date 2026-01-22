@@ -21,7 +21,7 @@ def is_superuser(user):
 @user_passes_test(is_superuser)
 def agent_download_page(request):
     """
-    Page for downloading the Sage Sync Agent.
+    Page for downloading the DMS Sync Agent.
     Only accessible to Root-Admins (superusers).
     """
     tenants = Tenant.objects.select_related('company').filter(
@@ -30,7 +30,7 @@ def agent_download_page(request):
     ).exclude(code='')
     
     context = {
-        'title': 'Sage Sync Agent Download',
+        'title': 'DMS Sync Agent Download',
         'tenants': tenants,
     }
     return render(request, 'admin/dms/agent_download.html', context)
@@ -40,10 +40,10 @@ def agent_download_page(request):
 @user_passes_test(is_superuser)
 def agent_download_zip(request, tenant_id):
     """
-    Download the Sage Sync Agent as a ZIP with pre-configured config.yaml.
+    Download the DMS Sync Agent as a ZIP with pre-configured config.yaml.
     
     The ZIP contains:
-    - SageSyncAgent.exe (placeholder - actual build would be from CI/CD)
+    - DMSSyncAgent.exe (placeholder - actual build would be from CI/CD)
     - config.yaml (pre-configured with tenant token and DMS URL)
     - README.txt (installation instructions)
     """
@@ -51,7 +51,7 @@ def agent_download_zip(request, tenant_id):
     
     dms_url = getattr(settings, 'DMS_PUBLIC_URL', 'https://portal.personalmappe.cloud')
     
-    config_yaml = f"""# Sage Sync Agent Konfiguration
+    config_yaml = f"""# DMS Sync Agent Konfiguration
 # Mandant: {tenant.name}
 # Erstellt: Automatisch generiert
 
@@ -72,21 +72,21 @@ heartbeat_interval_seconds: 300
     token_txt = f"""{tenant.ingest_token}"""
     
     readme_txt = f"""==============================================
-    SAGE SYNC AGENT - INSTALLATIONSANLEITUNG
+    DMS SYNC AGENT - INSTALLATIONSANLEITUNG
 ==============================================
 
 Mandant: {tenant.name}
-{f'Sage-Code: {tenant.code}' if tenant.code else ''}
+{f'Mandanten-Code: {tenant.code}' if tenant.code else ''}
 
 1. INSTALLATION
 ---------------
-1. Kopieren Sie den kompletten Ordner nach C:\\Programme\\SageSyncAgent\\
+1. Kopieren Sie den kompletten Ordner nach C:\\Programme\\DMSSyncAgent\\
 2. Öffnen Sie eine Administrator-Eingabeaufforderung (als Administrator)
-3. Wechseln Sie in das Verzeichnis: cd C:\\Programme\\SageSyncAgent
-4. Token installieren: SageSyncAgent.exe --set-token <Token aus token.txt>
+3. Wechseln Sie in das Verzeichnis: cd C:\\Programme\\DMSSyncAgent
+4. Token installieren: DMSSyncAgent.exe --set-token <Token aus token.txt>
    (Der Token lautet: {tenant.ingest_token})
-5. Dienst installieren: SageSyncAgent.exe --install
-6. Dienst starten: SageSyncAgent.exe --start
+5. Dienst installieren: DMSSyncAgent.exe --install
+6. Dienst starten: DMSSyncAgent.exe --start
 
 HINWEIS: Die Datei token.txt enthält Ihren persönlichen Zugangstoken.
 Löschen Sie diese Datei nach der Installation aus Sicherheitsgründen!
@@ -99,15 +99,15 @@ Bearbeiten Sie config.yaml und passen Sie die Pfade an:
 
 3. DIENST VERWALTEN
 -------------------
-Status prüfen: SageSyncAgent.exe --status
-Dienst stoppen: SageSyncAgent.exe --stop
-Dienst starten: SageSyncAgent.exe --start
-Dienst deinstallieren: SageSyncAgent.exe --uninstall
+Status prüfen: DMSSyncAgent.exe --status
+Dienst stoppen: DMSSyncAgent.exe --stop
+Dienst starten: DMSSyncAgent.exe --start
+Dienst deinstallieren: DMSSyncAgent.exe --uninstall
 
 4. LOGS
 -------
 Logs befinden sich unter:
-C:\\ProgramData\\SageSyncAgent\\logs\\agent.log
+C:\\ProgramData\\DMSSyncAgent\\logs\\agent.log
 
 5. SUPPORT
 ----------
@@ -116,19 +116,19 @@ Bei Fragen wenden Sie sich an Ihren DMS-Administrator.
 ==============================================
 """
 
-    placeholder_exe = b"MZ" + b"\x00" * 100 + b"PLACEHOLDER_EXE - Please build actual agent with: go build -o SageSyncAgent.exe ./cmd/agent"
+    placeholder_exe = b"MZ" + b"\x00" * 100 + b"PLACEHOLDER_EXE - Please build actual agent with: go build -o DMSSyncAgent.exe ./cmd/agent"
     
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        zip_file.writestr('SageSyncAgent/config.yaml', config_yaml)
-        zip_file.writestr('SageSyncAgent/README.txt', readme_txt)
-        zip_file.writestr('SageSyncAgent/token.txt', token_txt)
-        zip_file.writestr('SageSyncAgent/SageSyncAgent.exe', placeholder_exe)
+        zip_file.writestr('DMSSyncAgent/config.yaml', config_yaml)
+        zip_file.writestr('DMSSyncAgent/README.txt', readme_txt)
+        zip_file.writestr('DMSSyncAgent/token.txt', token_txt)
+        zip_file.writestr('DMSSyncAgent/DMSSyncAgent.exe', placeholder_exe)
     
     zip_buffer.seek(0)
     
     safe_name = (tenant.code or tenant.name).replace(' ', '_').replace('/', '_')
-    filename = f"SageSyncAgent_{safe_name}.zip"
+    filename = f"DMSSyncAgent_{safe_name}.zip"
     
     response = HttpResponse(zip_buffer.read(), content_type='application/zip')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
