@@ -893,10 +893,11 @@ def scan_sage_archive(self):
     """
     Scannt das Sage-Archiv und importiert Dokumente.
     
-    Wichtig: Dateien bleiben im Originalordner - nur Hash wird gespeichert.
-    Struktur: sage_archiv/00000001/YYYYMM/Dateiname.pdf
-    - 00000001 = Mandantenkennung
-    - YYYYMM = Abrechnungsmonat
+    SaaS-Modus: Verwendet Azure Blob Storage wenn konfiguriert.
+    Fallback: Lokales Dateisystem (SAGE_ARCHIVE_PATH).
+    
+    Azure Blob Struktur: sage-archive/{tenant_code}/{YYYYMM}/{filename}
+    Lokale Struktur: sage_archiv/{tenant_code}/{YYYYMM}/{filename}
     
     Personalunterlagen (Lohnscheine, etc.) werden via DataMatrix-Code getrennt.
     Firmendokumente (Beitragsnachweis, etc.) werden nach Dateiname klassifiziert.
@@ -906,7 +907,16 @@ def scan_sage_archive(self):
             log_system_event('INFO', 'SageScanner', "Scan übersprungen - Redis-Lock aktiv")
             return {'status': 'skipped', 'message': 'Another scan is already running (Redis lock)'}
         
-        return _run_sage_scan(self)
+        # Check if Azure Blob Storage is configured
+        from dms.models import SystemSettings
+        settings_obj = SystemSettings.load()
+        
+        if settings_obj.azure_storage_connection_string_encrypted:
+            log_system_event('INFO', 'SageScanner', "Verwende Azure Blob Storage")
+            return _run_sage_scan_azure(self)
+        else:
+            log_system_event('INFO', 'SageScanner', "Verwende lokales Dateisystem")
+            return _run_sage_scan(self)
 
 
 def _run_sage_scan(task_self):
@@ -1352,6 +1362,368 @@ def _run_sage_scan(task_self):
 
 
 # NOTE: scan_manual_input task removed - SaaS uses API ingest instead of local file scanning
+
+
+def _run_sage_scan_azure(task_self):
+    """
+    Azure Blob Storage version of Sage archive scan.
+    
+    Reads documents from Azure Blob Storage container with structure:
+    sage-archive/{tenant_code}/{YYYYMM}/{filename}
+    
+    Downloads each blob to temp file for processing, then cleans up.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import threading
+    import os as os_module
+    import tempfile
+    
+    from dms.azure_storage import (
+        list_sage_archive_blobs, 
+        download_blob_to_tempfile, 
+        parse_sage_blob_path
+    )
+    
+    scan_job = ScanJob.objects.create(
+        source='SAGE',
+        status='RUNNING',
+        total_files=0
+    )
+    
+    # Phase 1: List all blobs in sage-archive/
+    log_system_event('INFO', 'SageScanner', "Liste Azure Blobs in sage-archive/...")
+    
+    all_blobs = []
+    try:
+        for blob_name, blob_size in list_sage_archive_blobs():
+            all_blobs.append((blob_name, blob_size))
+    except Exception as e:
+        log_system_event('ERROR', 'SageScanner', f"Fehler beim Lesen von Azure Blob Storage: {e}")
+        scan_job.status = 'FAILED'
+        scan_job.error_message = str(e)
+        scan_job.save()
+        return {'status': 'error', 'message': str(e)}
+    
+    if not all_blobs:
+        log_system_event('INFO', 'SageScanner', "Keine Dateien in sage-archive/ gefunden")
+        scan_job.status = 'COMPLETED'
+        scan_job.completed_at = timezone.now()
+        scan_job.save()
+        return {'status': 'success', 'processed': 0, 'message': 'No blobs found'}
+    
+    log_system_event('INFO', 'SageScanner', f"Gefunden: {len(all_blobs)} Blobs in Azure")
+    
+    supported_extensions = {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.tiff', '.txt', '.csv'}
+    skip_files = {'thumbs.db', 'desktop.ini', '.ds_store'}
+    tenant_folder_pattern = re.compile(r'^\d{8}$')
+    month_folder_pattern = re.compile(r'^\d{6}$')
+    
+    # Phase 2: Load known paths and hashes
+    known_paths = set(ProcessedFile.objects.values_list('original_path', flat=True))
+    known_hashes_by_tenant = {}
+    tenant_cache = {}
+    
+    for tenant in Tenant.objects.filter(is_active=True):
+        if tenant.code:
+            tenant_cache[tenant.code] = tenant
+            known_hashes_by_tenant[tenant.code] = set(
+                ProcessedFile.objects.filter(tenant=tenant).values_list('sha256_hash', flat=True)
+            )
+    
+    # Filter and prepare blobs for processing
+    new_blobs = []
+    already_processed_count = 0
+    
+    for blob_name, blob_size in all_blobs:
+        tenant_code, month_folder, filename = parse_sage_blob_path(blob_name)
+        
+        if not tenant_code or not filename:
+            continue
+        
+        if not tenant_folder_pattern.match(tenant_code):
+            continue
+        
+        if filename.lower() in skip_files:
+            continue
+        
+        suffix = Path(filename).suffix.lower()
+        if suffix not in supported_extensions:
+            continue
+        
+        # Path-based quick check
+        if blob_name in known_paths:
+            already_processed_count += 1
+            continue
+        
+        # Create tenant if not exists
+        if tenant_code not in tenant_cache:
+            tenant, created = Tenant.objects.get_or_create(
+                code=tenant_code,
+                defaults={'name': f'Mandant {tenant_code}', 'is_active': True}
+            )
+            tenant_cache[tenant_code] = tenant
+            known_hashes_by_tenant[tenant_code] = set()
+            if created:
+                log_system_event('INFO', 'SageScanner', f"Neuer Mandant erstellt: {tenant_code}")
+        
+        new_blobs.append((blob_name, blob_size, tenant_code, month_folder, filename))
+    
+    scan_job.total_files = len(new_blobs)
+    scan_job.skipped_files = already_processed_count
+    scan_job.save(update_fields=['total_files', 'skipped_files'])
+    
+    log_system_event('INFO', 'SageScanner', 
+        f"Zu verarbeiten: {len(new_blobs)} neue Blobs, {already_processed_count} bereits vorhanden")
+    
+    if not new_blobs:
+        scan_job.status = 'COMPLETED'
+        scan_job.completed_at = timezone.now()
+        scan_job.save()
+        return {'status': 'success', 'processed': 0, 'already_processed': already_processed_count}
+    
+    # Shared counters
+    processed_count = 0
+    error_count = 0
+    personnel_docs = 0
+    company_docs = 0
+    counter_lock = threading.Lock()
+    hashes_lock = threading.Lock()
+    
+    def process_azure_blob(blob_info):
+        """Process a single blob from Azure."""
+        nonlocal processed_count, error_count, personnel_docs, company_docs, already_processed_count
+        
+        blob_name, blob_size, tenant_code, month_folder, filename = blob_info
+        tenant = tenant_cache[tenant_code]
+        temp_file = None
+        
+        with tenant_context(tenant):
+            try:
+                # Download blob to temp file
+                suffix = Path(filename).suffix
+                temp_file = download_blob_to_tempfile(blob_name, suffix=suffix)
+                
+                if not temp_file:
+                    with counter_lock:
+                        error_count += 1
+                    return {'success': False, 'error': 'Download failed', 'filename': filename}
+                
+                file_path = Path(temp_file)
+                
+                # Calculate hash
+                file_hash = calculate_sha256_chunked(str(file_path))
+                
+                # Thread-safe hash check
+                is_known = False
+                with hashes_lock:
+                    known_hashes = known_hashes_by_tenant.get(tenant_code, set())
+                    is_known = file_hash in known_hashes
+                
+                if is_known:
+                    with counter_lock:
+                        already_processed_count += 1
+                    return None
+                
+                # DB-level duplicate check
+                if ProcessedFile.objects.filter(tenant=tenant, sha256_hash=file_hash).exists():
+                    with counter_lock:
+                        already_processed_count += 1
+                    return None
+                
+                mime_type = get_mime_type(str(file_path))
+                
+                # Document classification
+                employee = None
+                status = 'UNASSIGNED'
+                needs_review = False
+                is_personnel = False
+                doc_type = 'UNBEKANNT'
+                category = None
+                description = 'Unbekanntes Dokument'
+                dm_result = None
+                
+                if suffix.lower() == '.pdf':
+                    dm_result = extract_employee_from_datamatrix(str(file_path))
+                    dm_mandant_code = dm_result.get('mandant_code')
+                    
+                    if dm_result['success'] and dm_result['employee_ids']:
+                        is_personnel = True
+                        for emp_id in dm_result['employee_ids']:
+                            employee = find_employee_by_id(emp_id, tenant=tenant, mandant_code=dm_mandant_code)
+                            if employee:
+                                status = 'ASSIGNED'
+                                break
+                        
+                        if not employee:
+                            needs_review = True
+                            status = 'REVIEW_NEEDED'
+                        
+                        doc_type, _, category, description = classify_sage_document(filename)
+                    elif dm_result['success'] and dm_result['codes']:
+                        is_personnel = True
+                        needs_review = True
+                        status = 'REVIEW_NEEDED'
+                        doc_type, _, category, description = classify_sage_document(filename)
+                    else:
+                        doc_type, is_personnel, category, description = classify_sage_document(filename)
+                        if is_personnel:
+                            needs_review = True
+                            status = 'REVIEW_NEEDED'
+                        else:
+                            status = 'COMPANY'
+                else:
+                    doc_type, is_personnel, category, description = classify_sage_document(filename)
+                    status = 'COMPANY' if not is_personnel else 'UNASSIGNED'
+                
+                # Read and encrypt content
+                with open(file_path, 'rb') as f:
+                    content = f.read()
+                encrypted_content = encrypt_data(content)
+                file_size = len(content)
+                
+                metadata = {
+                    'original_path': blob_name,
+                    'azure_blob': True,
+                    'needs_review': needs_review,
+                    'tenant_code': tenant_code,
+                    'doc_type': doc_type,
+                    'doc_type_description': description,
+                    'is_personnel_document': is_personnel,
+                    'category_code': category,
+                    'month_folder': month_folder,
+                }
+                
+                if dm_result:
+                    metadata['datamatrix'] = {
+                        'success': dm_result['success'],
+                        'codes_found': len(dm_result['codes']),
+                        'employee_ids': dm_result['employee_ids'],
+                    }
+                
+                document_type_obj = None
+                if doc_type and doc_type != 'UNBEKANNT':
+                    document_type_obj = get_or_create_document_type(doc_type, description, category, tenant)
+                
+                period_year, period_month = parse_month_folder(month_folder)
+                document = Document.objects.create(
+                    tenant=tenant,
+                    title=Path(filename).stem,
+                    original_filename=filename,
+                    file_extension=suffix,
+                    mime_type=mime_type,
+                    encrypted_content=encrypted_content,
+                    file_size=file_size,
+                    employee=employee,
+                    document_type=document_type_obj,
+                    status=status,
+                    source='SAGE',
+                    sha256_hash=file_hash,
+                    metadata=metadata,
+                    period_year=period_year,
+                    period_month=period_month
+                )
+                
+                ProcessedFile.objects.create(
+                    tenant=tenant,
+                    sha256_hash=file_hash,
+                    original_path=blob_name,
+                    document=document
+                )
+                
+                auto_classify_document(document, tenant=tenant)
+                
+                if status == 'REVIEW_NEEDED':
+                    create_review_task(document, source='SAGE_ARCHIVE')
+                
+                del content
+                del encrypted_content
+                
+                with hashes_lock:
+                    if tenant_code not in known_hashes_by_tenant:
+                        known_hashes_by_tenant[tenant_code] = set()
+                    known_hashes_by_tenant[tenant_code].add(file_hash)
+                
+                with counter_lock:
+                    processed_count += 1
+                    if is_personnel:
+                        personnel_docs += 1
+                    else:
+                        company_docs += 1
+                
+                return {'success': True, 'is_personnel': is_personnel, 'needs_review': needs_review,
+                        'filename': filename, 'doc_id': str(document.id), 'tenant': tenant_code}
+                
+            except Exception as e:
+                with counter_lock:
+                    error_count += 1
+                logger.error(f"Fehler bei Azure Blob {blob_name}: {e}")
+                return {'success': False, 'error': str(e), 'filename': filename}
+            finally:
+                # Clean up temp file
+                if temp_file and os_module.path.exists(temp_file):
+                    try:
+                        os_module.unlink(temp_file)
+                    except:
+                        pass
+    
+    # Phase 3: Parallel processing
+    max_workers = min(4, max(1, os_module.cpu_count() or 2))
+    log_system_event('INFO', 'SageScanner', f"Starte Azure-Verarbeitung mit {max_workers} Threads")
+    
+    try:
+        update_interval = 10
+        files_since_update = 0
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_azure_blob, b): b for b in new_blobs}
+            
+            for future in as_completed(futures):
+                result = future.result()
+                files_since_update += 1
+                
+                if files_since_update >= update_interval:
+                    scan_job.processed_files = processed_count
+                    scan_job.error_files = error_count
+                    scan_job.skipped_files = already_processed_count
+                    if result and result.get('filename'):
+                        scan_job.current_file = result['filename'][:100]
+                    scan_job.save(update_fields=['processed_files', 'error_files', 'skipped_files', 'current_file'])
+                    files_since_update = 0
+                
+                if result and result.get('needs_review'):
+                    log_system_event('WARNING', 'SageScanner',
+                        f"File requires review: {result['filename']}",
+                        {'document_id': result.get('doc_id'), 'tenant': result.get('tenant')})
+        
+        scan_job.status = 'COMPLETED'
+        scan_job.completed_at = timezone.now()
+        scan_job.processed_files = processed_count
+        scan_job.error_files = error_count
+        scan_job.skipped_files = already_processed_count
+        scan_job.current_file = ''
+        scan_job.save()
+        
+        log_system_event('INFO', 'SageScanner',
+            f"Azure Scan abgeschlossen: {processed_count} neu verarbeitet, "
+            f"{already_processed_count} bereits vorhanden, {error_count} Fehler")
+        
+        return {
+            'status': 'success',
+            'source': 'azure',
+            'processed': processed_count,
+            'personnel_documents': personnel_docs,
+            'company_documents': company_docs,
+            'already_processed': already_processed_count,
+            'errors': error_count
+        }
+        
+    except Exception as e:
+        scan_job.status = 'FAILED'
+        scan_job.error_message = str(e)
+        scan_job.completed_at = timezone.now()
+        scan_job.save()
+        log_system_event('CRITICAL', 'SageScanner', f"Azure Sage scan failed: {str(e)}")
+        raise task_self.retry(exc=e, countdown=60)
 
 
 @shared_task(bind=True, max_retries=3)
