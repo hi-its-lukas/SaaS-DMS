@@ -182,6 +182,16 @@ class Tenant(models.Model):
         verbose_name="Ingest-Token",
         help_text="Token für E-Mail-Routing (upload.<token>@dms.cloud)"
     )
+    
+    # DEK (Data Encryption Key) encrypted with KEK (Master Key)
+    # This enables per-tenant encryption isolation
+    encrypted_dek = models.BinaryField(
+        null=True,
+        blank=True,
+        verbose_name="Verschlüsselter DEK",
+        help_text="Tenant-spezifischer Verschlüsselungsschlüssel (KEK-verschlüsselt)"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(
@@ -202,7 +212,20 @@ class Tenant(models.Model):
         if not self.ingest_token:
             import secrets
             self.ingest_token = secrets.token_hex(6)
+        
+        # Generate DEK on first save if not present
+        if not self.encrypted_dek:
+            from dms.encryption import generate_tenant_dek
+            self.encrypted_dek = generate_tenant_dek()
+        
         super().save(*args, **kwargs)
+    
+    def get_dek(self):
+        """Decrypt and return this tenant's DEK."""
+        if not self.encrypted_dek:
+            return None
+        from dms.encryption import decrypt_tenant_dek
+        return decrypt_tenant_dek(bytes(self.encrypted_dek))
 
     class Meta:
         ordering = ['code']

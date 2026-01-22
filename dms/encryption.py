@@ -59,6 +59,88 @@ def calculate_sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
+# =============================================================================
+# TENANT-SPECIFIC DEK (Data Encryption Key) MANAGEMENT
+# Each tenant has their own DEK, encrypted with the master KEK (Key Encryption Key).
+# This provides per-tenant encryption isolation.
+# =============================================================================
+
+def generate_tenant_dek():
+    """
+    Generate a new tenant-specific DEK and encrypt it with the KEK.
+    
+    Returns:
+        bytes: The encrypted DEK (can be stored in database)
+    """
+    # Generate a fresh 256-bit AES key for this tenant
+    dek = secrets.token_bytes(32)
+    
+    # Encrypt the DEK with the master KEK (using Fernet)
+    fernet = get_fernet()
+    encrypted_dek = fernet.encrypt(dek)
+    
+    return encrypted_dek
+
+
+def decrypt_tenant_dek(encrypted_dek):
+    """
+    Decrypt a tenant's DEK using the master KEK.
+    
+    Args:
+        encrypted_dek: The Fernet-encrypted DEK bytes
+    
+    Returns:
+        bytes: The raw 256-bit DEK for use with AES-GCM
+    """
+    if isinstance(encrypted_dek, memoryview):
+        encrypted_dek = bytes(encrypted_dek)
+    
+    fernet = get_fernet()
+    return fernet.decrypt(encrypted_dek)
+
+
+def encrypt_with_dek(data, dek):
+    """
+    Encrypt data using a tenant-specific DEK with AES-GCM.
+    
+    Args:
+        data: bytes to encrypt
+        dek: 32-byte DEK
+    
+    Returns:
+        bytes: nonce + ciphertext (nonce is 12 bytes)
+    """
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    
+    aesgcm = AESGCM(dek)
+    nonce = secrets.token_bytes(NONCE_SIZE)
+    ciphertext = aesgcm.encrypt(nonce, data, None)
+    
+    return nonce + ciphertext
+
+
+def decrypt_with_dek(encrypted_data, dek):
+    """
+    Decrypt data using a tenant-specific DEK with AES-GCM.
+    
+    Args:
+        encrypted_data: nonce + ciphertext bytes
+        dek: 32-byte DEK
+    
+    Returns:
+        bytes: decrypted data
+    """
+    if isinstance(encrypted_data, memoryview):
+        encrypted_data = bytes(encrypted_data)
+    
+    nonce = encrypted_data[:NONCE_SIZE]
+    ciphertext = encrypted_data[NONCE_SIZE:]
+    
+    aesgcm = AESGCM(dek)
+    return aesgcm.decrypt(nonce, ciphertext, None)
+
+
 def calculate_sha256_chunked(file_path, chunk_size=65536):
     """
     Berechnet SHA256 eines Files per Streaming ohne gesamte Datei in RAM zu laden.

@@ -337,7 +337,7 @@ AZURE_INGEST_TENANT_ID = os.environ.get('AZURE_INGEST_TENANT_ID')
 AZURE_INGEST_MAILBOX = os.environ.get('AZURE_INGEST_MAILBOX', 'ingest@dms.cloud')
 
 SAGE_ARCHIVE_PATH = os.environ.get('SAGE_ARCHIVE_PATH', str(BASE_DIR / 'data' / 'sage_archive'))
-MANUAL_INPUT_PATH = os.environ.get('MANUAL_INPUT_PATH', str(BASE_DIR / 'data' / 'manual_input'))
+# MANUAL_INPUT_PATH removed - SaaS uses API ingest instead of local file scanning
 EMAIL_ARCHIVE_PATH = os.environ.get('EMAIL_ARCHIVE_PATH', str(BASE_DIR / 'data' / 'email_archive'))
 
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', None)
