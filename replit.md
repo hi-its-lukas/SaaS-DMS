@@ -8,17 +8,52 @@ This project is a production-ready, Django-based Document Management System (DMS
 
 I prefer iterative development where features are released incrementally. I want detailed explanations of complex architectural decisions and technical implementations. Before making any major changes to the database schema or core architecture, please ask for my approval. I expect the agent to prioritize secure and scalable solutions. I prefer that the agent communicates using clear and direct language.
 
+## Recent Changes (2026-01-22)
+
+Major refactoring for Cloud-Native SaaS architecture:
+
+### New Company Model (Licensing)
+- `Company` model represents customer organizations with UUID `system_id`
+- License limits: `license_max_mandanten`, `license_max_users`, `license_max_personnel_files`
+- Root-Admin dashboard shows license usage (current/max)
+
+### Tenant Model Changes
+- `Tenant` now has `company` ForeignKey (belongs to Company)
+- `code` field is now **optional** (only needed for Sage import)
+- Removed `onboarding_status`, `contact_email`, `contact_name` (moved to Company)
+
+### SystemSettings Cleanup
+- Removed: Samba fields, `sage_cloud_api_url` (now tenant-specific)
+- Added: Azure Blob Storage connection fields
+
+### Security Enhancements
+- SystemLog now has `tenant` field for log isolation
+- AES-GCM streaming encryption with length-prefixed format
+- IP address masking for GDPR compliance
+
+### API Endpoints
+- `POST /api/v1/ingest/document/` - Document upload with token auth
+- `GET /api/v1/health/` - Health check
+- `GET /api/v1/tenant/` - Tenant info for authenticated token
+
+### Removed Samba Dependencies
+- Deleted: `generate_samba_config.py`, `map_shares.bat`, `map_shares.ps1`
+
 ## System Architecture
 
 The DMS is built as a multi-tenant SaaS application using Django.
 
 ### Multi-Tenancy
 
-- **Single URL Architecture**: All tenants access the system via a single URL (e.g., `app.dms.cloud`).
+- **Single URL Architecture**: All tenants access the system via a single URL (e.g., `portal.personalmappe.cloud`).
 - **Tenant Isolation**: Achieved through `TenantMiddleware` (identifies tenant from logged-in user) and `TenantAwareManager` (automatically filters QuerySets by tenant). Thread-local storage maintains tenant context across requests.
+- **Hierarchical Structure**: Company → Tenant → Users/Documents
+    - **Company**: Customer organization with license limits (managed by Root-Admin)
+    - **Tenant (Mandant)**: Business unit within a company (managed by Company-Admin)
 - **Role-Based Access Control** (Blind Root-Admin Pattern):
-    - **Root-Admin**: Sees ONLY tenant overview (Tenant, TenantInvite, TenantUser) and system settings. Cannot access documents, employees, or other tenant-specific data. Dashboard shows tenant counts and pending invites only.
-    - **Tenant-Admin**: Manages data only for their specific tenant. Full access to documents, employees, and personnel files within their tenant.
+    - **Root-Admin**: Manages only Company, TenantInvite, and system settings. Cannot access documents, employees, or other tenant-specific data. Dashboard shows company license usage.
+    - **Company-Admin**: Creates Tenants within their Company's license limits. Full access to tenant data.
+    - **Tenant-Admin**: Manages data only for their specific tenant.
     - **User**: Accesses documents within their assigned tenant only.
 - **Data Security**: All core models include a `tenant` field. `TenantAwareManager` ensures automatic filtering of all database queries.
 

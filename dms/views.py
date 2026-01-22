@@ -1698,11 +1698,14 @@ def accept_invite(request, token):
                 'form_data': request.POST,
             })
         
+        # GDPR: Mask IP address before storing
+        from dms.encryption import mask_ip_address
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
-            client_ip = x_forwarded_for.split(',')[0].strip()
+            raw_ip = x_forwarded_for.split(',')[0].strip()
         else:
-            client_ip = request.META.get('REMOTE_ADDR')
+            raw_ip = request.META.get('REMOTE_ADDR')
+        client_ip = mask_ip_address(raw_ip)
         
         consent_text = """Mit der Nutzung der digitalen Personalmappe erklären Sie sich einverstanden, dass:
 - Ihre personenbezogenen Daten (Name, E-Mail, IP-Adresse) zur Bereitstellung des Dienstes verarbeitet werden.

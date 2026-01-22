@@ -612,6 +612,10 @@ class Task(models.Model):
 
 
 class SystemLog(models.Model):
+    """
+    System logging with tenant isolation.
+    Logs are now tenant-aware to prevent global log leakage.
+    """
     LEVEL_CHOICES = [
         ('DEBUG', 'Debug'),
         ('INFO', 'Info'),
@@ -620,14 +624,27 @@ class SystemLog(models.Model):
         ('CRITICAL', 'Critical'),
     ]
 
+    tenant = models.ForeignKey(
+        Tenant, 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True,
+        related_name='logs',
+        verbose_name="Mandant",
+        help_text="Wenn gesetzt, ist dieser Log nur für diesen Mandanten sichtbar"
+    )
     timestamp = models.DateTimeField(auto_now_add=True)
     level = models.CharField(max_length=10, choices=LEVEL_CHOICES, default='INFO')
     source = models.CharField(max_length=100)
     message = models.TextField()
     details = models.JSONField(default=dict, blank=True)
+    
+    objects = TenantAwareManagerAllowNull()
+    all_objects = models.Manager()
 
     def __str__(self):
-        return f"[{self.level}] {self.timestamp} - {self.source}"
+        tenant_prefix = f"[{self.tenant.name}] " if self.tenant else ""
+        return f"{tenant_prefix}[{self.level}] {self.timestamp} - {self.source}"
 
     class Meta:
         ordering = ['-timestamp']
@@ -692,29 +709,29 @@ class ScanJob(models.Model):
 
 
 class SystemSettings(models.Model):
-    """Singleton model for system-wide configuration - editable via Django Admin"""
+    """
+    Singleton model for system-wide configuration - editable via Django Admin.
     
-    sage_cloud_api_url = models.URLField(
-        blank=True, 
-        verbose_name="Sage Cloud API URL",
-        help_text="z.B. https://mycompany.sage.hr/api"
-    )
-    encrypted_sage_cloud_api_key = models.BinaryField(blank=True, null=True, verbose_name="Sage Cloud API-Schlüssel (verschlüsselt)")
+    NOTE: This is for GLOBAL system settings only.
+    Tenant-specific API credentials should be stored on the Tenant or Company model.
+    """
     
+    # MS Graph for central email ingest (system-wide app registration)
     ms_graph_tenant_id = models.CharField(max_length=100, blank=True, verbose_name="MS Graph Tenant ID")
     ms_graph_client_id = models.CharField(max_length=100, blank=True, verbose_name="MS Graph Client ID")
     encrypted_ms_graph_secret = models.BinaryField(blank=True, null=True, verbose_name="MS Graph Secret (verschlüsselt)")
     
-    samba_username = models.CharField(
-        max_length=50, 
-        default="dmsuser",
-        verbose_name="Samba Benutzername",
-        help_text="Benutzername für Netzwerkfreigaben"
-    )
-    encrypted_samba_password = models.BinaryField(
+    # Azure Blob Storage for document storage
+    azure_storage_connection_string_encrypted = models.BinaryField(
         blank=True, 
         null=True, 
-        verbose_name="Samba Passwort (verschlüsselt)"
+        verbose_name="Azure Storage Connection String (verschlüsselt)"
+    )
+    azure_storage_container_name = models.CharField(
+        max_length=100, 
+        default="documents",
+        blank=True,
+        verbose_name="Azure Blob Container Name"
     )
     
     updated_at = models.DateTimeField(auto_now=True)

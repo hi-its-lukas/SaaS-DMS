@@ -733,105 +733,73 @@ class SystemLogAdmin(ModelAdmin):
 
 
 class SystemSettingsAdminForm(forms.ModelForm):
-    sage_cloud_api_key = forms.CharField(
-        widget=forms.PasswordInput(render_value=True),
-        required=False,
-        label="Sage Cloud API-Schlüssel"
-    )
+    """
+    Form for SystemSettings with encrypted field handling.
+    Removed: Sage API Key (tenant-specific), Samba (deprecated).
+    """
     ms_graph_secret = forms.CharField(
         widget=forms.PasswordInput(render_value=True),
         required=False,
         label="MS Graph Secret"
     )
-    samba_password = forms.CharField(
+    azure_storage_connection_string = forms.CharField(
         widget=forms.PasswordInput(render_value=True),
         required=False,
-        label="Samba Passwort",
-        help_text="Passwort für Netzwerkfreigaben (Sage_Archiv, Manueller_Scan)"
+        label="Azure Storage Connection String",
+        help_text="Connection String aus dem Azure Portal"
     )
     
     class Meta:
         model = SystemSettings
-        exclude = ['encrypted_sage_cloud_api_key', 'encrypted_ms_graph_secret', 'encrypted_samba_password']
+        exclude = ['encrypted_ms_graph_secret', 'azure_storage_connection_string_encrypted']
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.instance.pk:
-            if self.instance.encrypted_sage_cloud_api_key:
-                try:
-                    self.fields['sage_cloud_api_key'].initial = decrypt_data(bytes(self.instance.encrypted_sage_cloud_api_key)).decode()
-                except Exception:
-                    pass
             if self.instance.encrypted_ms_graph_secret:
                 try:
                     self.fields['ms_graph_secret'].initial = decrypt_data(bytes(self.instance.encrypted_ms_graph_secret)).decode()
                 except Exception:
                     pass
-            if self.instance.encrypted_samba_password:
+            if self.instance.azure_storage_connection_string_encrypted:
                 try:
-                    self.fields['samba_password'].initial = decrypt_data(bytes(self.instance.encrypted_samba_password)).decode()
+                    self.fields['azure_storage_connection_string'].initial = decrypt_data(bytes(self.instance.azure_storage_connection_string_encrypted)).decode()
                 except Exception:
                     pass
     
     def save(self, commit=True):
         instance = super().save(commit=False)
         
-        sage_cloud_key = self.cleaned_data.get('sage_cloud_api_key')
-        if sage_cloud_key:
-            instance.encrypted_sage_cloud_api_key = encrypt_data(sage_cloud_key.encode())
-        
         ms_graph = self.cleaned_data.get('ms_graph_secret')
         if ms_graph:
             instance.encrypted_ms_graph_secret = encrypt_data(ms_graph.encode())
         
-        samba_pw = self.cleaned_data.get('samba_password')
-        if samba_pw:
-            instance.encrypted_samba_password = encrypt_data(samba_pw.encode())
+        azure_conn = self.cleaned_data.get('azure_storage_connection_string')
+        if azure_conn:
+            instance.azure_storage_connection_string_encrypted = encrypt_data(azure_conn.encode())
         
         if commit:
             instance.save()
-            self._update_samba_config(instance)
         return instance
-    
-    def _update_samba_config(self, instance):
-        import os
-        from pathlib import Path
-        
-        if not instance.encrypted_samba_password:
-            return
-        
-        try:
-            samba_password = decrypt_data(bytes(instance.encrypted_samba_password)).decode()
-            config_dir = Path('/data/runtime')
-            config_dir.mkdir(parents=True, exist_ok=True)
-            
-            env_file = config_dir / '.env.samba'
-            with open(env_file, 'w') as f:
-                f.write(f"SAMBA_USER={instance.samba_username}\n")
-                f.write(f"SAMBA_PASSWORD={samba_password}\n")
-            
-            os.chmod(env_file, 0o600)
-        except Exception:
-            pass
 
 
 @admin.register(SystemSettings)
 class SystemSettingsAdmin(ModelAdmin):
+    """
+    Admin for global system settings.
+    Only visible to Root-Admin (superusers).
+    """
     form = SystemSettingsAdminForm
-    list_display = ('__str__', 'sage_cloud_api_url', 'ms_graph_tenant_id', 'samba_username')
+    list_display = ('__str__', 'ms_graph_tenant_id', 'azure_storage_container_name', 'updated_at')
     
     fieldsets = (
-        ('Sage Cloud (REST)', {
-            'fields': ('sage_cloud_api_url', 'sage_cloud_api_key'),
-            'description': 'Verbindungseinstellungen für Sage HR Cloud'
-        }),
-        ('Microsoft Graph', {
+        ('Microsoft Graph (E-Mail-Ingest)', {
             'fields': ('ms_graph_tenant_id', 'ms_graph_client_id', 'ms_graph_secret'),
-            'description': 'Verbindungseinstellungen für Microsoft 365'
+            'description': 'Verbindungseinstellungen für zentralen E-Mail-Ingest via Microsoft 365'
         }),
-        ('Netzwerkfreigaben (Samba)', {
-            'fields': ('samba_username', 'samba_password'),
-            'description': 'Zugangsdaten für Windows-Netzwerkfreigaben'
+        ('Azure Blob Storage', {
+            'fields': ('azure_storage_connection_string', 'azure_storage_container_name'),
+            'description': 'Einstellungen für Dokumentenspeicherung in Azure'
         }),
     )
     

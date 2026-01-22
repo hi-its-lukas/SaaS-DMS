@@ -1,9 +1,16 @@
 from django.urls import path
 from . import views
+from . import api
 
 app_name = 'dms'
 
 urlpatterns = [
+    # API Endpoints (v1)
+    path('api/v1/health/', api.api_health, name='api_health'),
+    path('api/v1/tenant/', api.api_tenant_info, name='api_tenant_info'),
+    path('api/v1/ingest/document/', api.api_upload_document, name='api_upload_document'),
+    
+    # Web UI
     path('', views.index, name='index'),
     path('upload/', views.upload_page, name='upload_page'),
     path('upload/file/', views.upload_file, name='upload_file'),
