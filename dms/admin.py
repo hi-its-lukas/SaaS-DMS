@@ -6,7 +6,7 @@ from unfold.admin import ModelAdmin, TabularInline, StackedInline
 from unfold.decorators import display
 from unfold.contrib.filters.admin import RangeDateFilter, DropdownFilter, ChoicesDropdownFilter
 from .models import (
-    Tenant, TenantUser, TenantInvite,
+    Company, Tenant, TenantUser, TenantInvite,
     Department, CostCenter, Employee, DocumentType, Document, 
     ProcessedFile, Task, SystemLog, SystemSettings,
     ImportedLeaveRequest, ImportedTimesheet,
@@ -32,17 +32,17 @@ def dashboard_callback(request, context):
     week_ago = today - timedelta(days=7)
     
     if request.user.is_superuser:
+        total_companies = Company.objects.count()
+        active_companies = Company.objects.filter(is_active=True).count()
         total_tenants = Tenant.objects.count()
-        active_tenants = Tenant.objects.filter(is_active=True).count()
-        pending_invites = TenantInvite.objects.filter(status='PENDING').count()
-        total_users = TenantUser.objects.count()
+        total_users = TenantUser.objects.values('user').distinct().count()
         
         context.update({
             "kpi": [
-                {"title": "Mandanten", "metric": total_tenants, "icon": "domain"},
-                {"title": "Aktive Mandanten", "metric": active_tenants, "icon": "check_circle"},
-                {"title": "Offene Einladungen", "metric": pending_invites, "icon": "mail"},
-                {"title": "Benutzer", "metric": total_users, "icon": "people"},
+                {"title": "Unternehmen", "metric": total_companies, "icon": "business"},
+                {"title": "Aktive Unternehmen", "metric": active_companies, "icon": "check_circle"},
+                {"title": "Mandanten gesamt", "metric": total_tenants, "icon": "domain"},
+                {"title": "Benutzer gesamt", "metric": total_users, "icon": "people"},
             ],
         })
     else:
@@ -113,34 +113,52 @@ class TenantFilterMixin:
         return super().has_delete_permission(request, obj)
 
 
-class TenantUserInline(TabularInline):
-    model = TenantUser
-    extra = 1
+class TenantInline(TabularInline):
+    """Inline for viewing Tenants within a Company."""
+    model = Tenant
+    extra = 0
+    fields = ['name', 'code', 'is_active', 'created_at']
+    readonly_fields = ['created_at']
+    show_change_link = True
 
 
-@admin.register(Tenant)
-class TenantAdmin(ModelAdmin):
-    list_display = ['code', 'name', 'onboarding_status_badge', 'contact_email', 'is_active_badge', 'user_count', 'created_at']
+@admin.register(Company)
+class CompanyAdmin(ModelAdmin):
+    """
+    Admin for Companies (Unternehmen/Kunden).
+    Only visible to Root-Admin (superusers).
+    Shows license usage and allows setting limits.
+    """
+    list_display = [
+        'name', 'onboarding_status_badge', 'is_active_badge',
+        'mandanten_usage', 'users_usage', 'personnel_files_usage',
+        'created_at'
+    ]
     list_filter = ['is_active', ('onboarding_status', ChoicesDropdownFilter)]
-    search_fields = ['code', 'name', 'contact_email', 'contact_name']
-    inlines = [TenantUserInline]
-    readonly_fields = ['ingest_token', 'ingest_email_display', 'created_at', 'created_by']
+    search_fields = ['name', 'contact_email', 'contact_name']
+    readonly_fields = ['system_id', 'created_at', 'updated_at', 'created_by',
+                       'current_mandanten_display', 'current_users_display', 
+                       'current_personnel_files_display']
+    inlines = [TenantInline]
     actions = ['send_invite_action']
     
     fieldsets = (
-        ('Mandant', {
-            'fields': ('code', 'name', 'description', 'is_active', 'onboarding_status')
+        ('Unternehmen', {
+            'fields': ('name', 'description', 'is_active', 'onboarding_status', 'system_id')
         }),
-        ('Kontakt (DSGVO-Minimum)', {
+        ('Kontakt', {
             'fields': ('contact_name', 'contact_email'),
-            'description': 'Nur minimale Kontaktdaten für die Einladung. Weitere Daten werden vom Mandanten selbst gepflegt.'
         }),
-        ('E-Mail-Ingest', {
-            'fields': ('ingest_token', 'ingest_email_display'),
-            'description': 'Dokumente an diese E-Mail-Adresse senden, um sie automatisch diesem Mandanten zuzuordnen.'
+        ('Lizenzlimits', {
+            'fields': (
+                ('license_max_mandanten', 'current_mandanten_display'),
+                ('license_max_users', 'current_users_display'),
+                ('license_max_personnel_files', 'current_personnel_files_display'),
+            ),
+            'description': 'Definieren Sie die maximale Anzahl an Mandanten, Benutzern und Personalakten für diesen Kunden.'
         }),
         ('Verwaltung', {
-            'fields': ('created_at', 'created_by'),
+            'fields': ('created_at', 'updated_at', 'created_by'),
             'classes': ('collapse',)
         }),
     )
@@ -161,11 +179,99 @@ class TenantAdmin(ModelAdmin):
     def is_active_badge(self, obj):
         return "Aktiv" if obj.is_active else "Inaktiv"
     
-    @display(description="Ingest-E-Mail")
-    def ingest_email(self, obj):
-        if obj.ingest_token:
-            return f"upload.{obj.ingest_token}@dms.cloud"
+    @display(description="Mandanten")
+    def mandanten_usage(self, obj):
+        current = obj.current_mandanten_count
+        max_val = obj.license_max_mandanten
+        return f"{current} / {max_val}"
+    
+    @display(description="Benutzer")
+    def users_usage(self, obj):
+        current = obj.current_users_count
+        max_val = obj.license_max_users
+        return f"{current} / {max_val}"
+    
+    @display(description="Personalakten")
+    def personnel_files_usage(self, obj):
+        current = obj.current_personnel_files_count
+        max_val = obj.license_max_personnel_files
+        return f"{current} / {max_val}"
+    
+    @display(description="Aktuelle Mandanten")
+    def current_mandanten_display(self, obj):
+        if obj.pk:
+            return f"{obj.current_mandanten_count} von {obj.license_max_mandanten}"
         return "-"
+    
+    @display(description="Aktuelle Benutzer")
+    def current_users_display(self, obj):
+        if obj.pk:
+            return f"{obj.current_users_count} von {obj.license_max_users}"
+        return "-"
+    
+    @display(description="Aktuelle Personalakten")
+    def current_personnel_files_display(self, obj):
+        if obj.pk:
+            return f"{obj.current_personnel_files_count} von {obj.license_max_personnel_files}"
+        return "-"
+    
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+    
+    @admin.action(description="Einladung an Kontakt senden")
+    def send_invite_action(self, request, queryset):
+        from django.contrib import messages
+        sent = 0
+        for company in queryset:
+            if not company.contact_email:
+                messages.warning(request, f"{company.name}: Keine Kontakt-E-Mail hinterlegt.")
+                continue
+            sent += 1
+        if sent > 0:
+            messages.success(request, f"{sent} Einladung(en) gesendet.")
+
+
+class TenantUserInline(TabularInline):
+    model = TenantUser
+    extra = 1
+
+
+@admin.register(Tenant)
+class TenantAdmin(ModelAdmin):
+    """
+    Admin for Tenants (Mandanten).
+    Tenants belong to a Company and are created by Company admins.
+    """
+    list_display = ['name', 'company', 'code', 'is_active_badge', 'user_count', 'created_at']
+    list_filter = ['is_active', 'company']
+    search_fields = ['code', 'name', 'company__name']
+    inlines = [TenantUserInline]
+    readonly_fields = ['ingest_token', 'ingest_email_display', 'created_at', 'created_by']
+    
+    fieldsets = (
+        ('Mandant', {
+            'fields': ('company', 'name', 'description', 'is_active')
+        }),
+        ('Sage-Integration (optional)', {
+            'fields': ('code',),
+            'description': 'Sage-Mandanten-Code nur erforderlich, wenn Sage-Import genutzt wird.',
+            'classes': ('collapse',)
+        }),
+        ('E-Mail-Ingest', {
+            'fields': ('ingest_token', 'ingest_email_display'),
+            'description': 'Dokumente an diese E-Mail-Adresse senden, um sie automatisch diesem Mandanten zuzuordnen.'
+        }),
+        ('Verwaltung', {
+            'fields': ('created_at', 'created_by'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    @display(description="Status", label={"Aktiv": "success", "Inaktiv": "danger"})
+    def is_active_badge(self, obj):
+        return "Aktiv" if obj.is_active else "Inaktiv"
     
     @display(description="Ingest-E-Mail-Adresse")
     def ingest_email_display(self, obj):
@@ -181,74 +287,6 @@ class TenantAdmin(ModelAdmin):
         if not change:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
-    
-    @admin.action(description="Einladung an Kontakt senden")
-    def send_invite_action(self, request, queryset):
-        from django.contrib import messages
-        from django.core.mail import send_mail
-        from django.conf import settings
-        
-        sent = 0
-        for tenant in queryset:
-            if not tenant.contact_email:
-                messages.warning(request, f"{tenant.name}: Keine Kontakt-E-Mail hinterlegt.")
-                continue
-            
-            TenantInvite.objects.filter(
-                tenant=tenant,
-                email=tenant.contact_email,
-                status='PENDING'
-            ).update(status='REVOKED')
-            
-            invite, raw_token = TenantInvite.create_invite(
-                tenant=tenant,
-                email=tenant.contact_email,
-                name=tenant.contact_name,
-                created_by=request.user,
-            )
-            
-            invite_url = f"{settings.SITE_URL}/einladung/{raw_token}/"
-            
-            try:
-                send_mail(
-                    subject=f"Einladung zur Personalmappe - {tenant.name}",
-                    message=f"""Guten Tag {tenant.contact_name or ''},
-
-Sie wurden als Administrator für die digitale Personalmappe von {tenant.name} eingeladen.
-
-Klicken Sie auf folgenden Link, um Ihren Account zu erstellen:
-{invite_url}
-
-Dieser Link ist 7 Tage gültig.
-
-Bei Fragen wenden Sie sich bitte an Ihren Ansprechpartner.
-
-Mit freundlichen Grüßen
-Ihr DMS-Team
-""",
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[tenant.contact_email],
-                    fail_silently=False,
-                )
-                tenant.onboarding_status = 'INVITED'
-                tenant.save(update_fields=['onboarding_status'])
-                sent += 1
-            except Exception as e:
-                messages.error(request, f"{tenant.name}: E-Mail-Versand fehlgeschlagen - {e}")
-                invite.status = 'REVOKED'
-                invite.save(update_fields=['status'])
-        
-        if sent:
-            messages.success(request, f"{sent} Einladung(en) erfolgreich gesendet.")
-    
-    def has_module_permission(self, request):
-        return request.user.is_superuser
-    
-    def has_view_permission(self, request, obj=None):
-        return request.user.is_superuser
-    
-    def has_add_permission(self, request):
-        return request.user.is_superuser
 
 
 @admin.register(TenantInvite)

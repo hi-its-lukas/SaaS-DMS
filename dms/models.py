@@ -27,7 +27,12 @@ def version_upload_path(instance, filename):
     return f"versions/{tenant_code}/{now.year}/{now.month:02d}/{instance.id}_{filename}"
 
 
-class Tenant(models.Model):
+class Company(models.Model):
+    """
+    Represents a customer organization (Kunde/Unternehmen).
+    Root-Admin creates companies and assigns license limits.
+    Company admins can then create their own Tenants (Mandanten).
+    """
     ONBOARDING_STATUS_CHOICES = [
         ('CREATED', 'Erstellt'),
         ('INVITED', 'Einladung gesendet'),
@@ -35,28 +40,138 @@ class Tenant(models.Model):
         ('SUSPENDED', 'Gesperrt'),
     ]
     
-    code = models.CharField(max_length=20, unique=True, verbose_name="Mandanten-Code",
-                           help_text="Sage-Ordnername (z.B. 0000001)")
-    name = models.CharField(max_length=200, verbose_name="Mandantenname")
+    # System-generated unique identifier
+    system_id = models.UUIDField(
+        default=uuid.uuid4, 
+        editable=False, 
+        unique=True,
+        verbose_name="System-ID",
+        help_text="Automatisch generierter eindeutiger Identifier"
+    )
+    
+    name = models.CharField(max_length=200, verbose_name="Firmenname")
     description = models.TextField(blank=True, verbose_name="Beschreibung")
     is_active = models.BooleanField(default=True, verbose_name="Aktiv")
     
+    # License limits (for billing/pricing)
+    license_max_mandanten = models.PositiveIntegerField(
+        default=1,
+        verbose_name="Max. Mandanten",
+        help_text="Maximale Anzahl an Mandanten für diesen Kunden"
+    )
+    license_max_users = models.PositiveIntegerField(
+        default=5,
+        verbose_name="Max. Benutzer",
+        help_text="Maximale Anzahl an Benutzern für diesen Kunden"
+    )
+    license_max_personnel_files = models.PositiveIntegerField(
+        default=100,
+        verbose_name="Max. Personalakten",
+        help_text="Maximale Anzahl an Personalakten für diesen Kunden"
+    )
+    
+    # Onboarding
     onboarding_status = models.CharField(
-        max_length=20, 
-        choices=ONBOARDING_STATUS_CHOICES, 
+        max_length=20,
+        choices=ONBOARDING_STATUS_CHOICES,
         default='CREATED',
         verbose_name="Onboarding-Status"
     )
     contact_email = models.EmailField(
-        blank=True, 
+        blank=True,
         verbose_name="Kontakt-E-Mail",
-        help_text="E-Mail des ersten Mandanten-Administrators"
+        help_text="E-Mail des Unternehmens-Administrators"
     )
     contact_name = models.CharField(
-        max_length=200, 
-        blank=True, 
+        max_length=200,
+        blank=True,
         verbose_name="Kontaktperson"
     )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_companies',
+        verbose_name="Erstellt von"
+    )
+    
+    class Meta:
+        ordering = ['name']
+        verbose_name = "Unternehmen"
+        verbose_name_plural = "Unternehmen"
+    
+    def __str__(self):
+        return self.name
+    
+    @property
+    def current_mandanten_count(self):
+        """Returns the current number of Mandanten for this company."""
+        return self.tenants.filter(is_active=True).count()
+    
+    @property
+    def current_users_count(self):
+        """Returns the current number of Users across all Mandanten."""
+        from django.db.models import Count
+        return TenantUser.objects.filter(
+            tenant__company=self,
+            tenant__is_active=True
+        ).values('user').distinct().count()
+    
+    @property
+    def current_personnel_files_count(self):
+        """Returns the current number of PersonnelFiles across all Mandanten."""
+        return PersonnelFile.objects.filter(
+            tenant__company=self,
+            tenant__is_active=True
+        ).count()
+    
+    @property
+    def license_mandanten_remaining(self):
+        return max(0, self.license_max_mandanten - self.current_mandanten_count)
+    
+    @property
+    def license_users_remaining(self):
+        return max(0, self.license_max_users - self.current_users_count)
+    
+    @property
+    def license_personnel_files_remaining(self):
+        return max(0, self.license_max_personnel_files - self.current_personnel_files_count)
+
+
+class Tenant(models.Model):
+    """
+    Represents a Mandant within a Company.
+    Company admins can create multiple Tenants under their company.
+    The code field is optional and only used for Sage document import.
+    """
+    
+    # Link to Company (the parent organization)
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name='tenants',
+        verbose_name="Unternehmen",
+        null=True,  # Temporarily nullable for migration
+        blank=True
+    )
+    
+    # Sage-Code is now OPTIONAL - only needed for Sage import
+    code = models.CharField(
+        max_length=20, 
+        unique=True, 
+        null=True,
+        blank=True,
+        verbose_name="Sage-Mandanten-Code",
+        help_text="Optional: Sage-Ordnername für Import (z.B. 0000001)"
+    )
+    name = models.CharField(max_length=200, verbose_name="Mandantenname")
+    description = models.TextField(blank=True, verbose_name="Beschreibung")
+    is_active = models.BooleanField(default=True, verbose_name="Aktiv")
     
     ingest_token = models.CharField(
         max_length=12, 
@@ -79,7 +194,9 @@ class Tenant(models.Model):
     )
 
     def __str__(self):
-        return f"{self.code} - {self.name}"
+        if self.code:
+            return f"{self.code} - {self.name}"
+        return self.name
     
     def save(self, *args, **kwargs):
         if not self.ingest_token:
