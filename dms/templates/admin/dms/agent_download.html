@@ -1,0 +1,100 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #007e45 0%, #005c32 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 30px;">
+        <h1 style="margin: 0 0 10px 0; font-size: 28px;">
+            <span style="margin-right: 10px;">📦</span>
+            Sage Sync Agent Download
+        </h1>
+        <p style="margin: 0; opacity: 0.9;">
+            Laden Sie den vorkonfigurierten Agent für Ihre Kunden herunter.
+        </p>
+    </div>
+
+    <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
+        <h3 style="margin-top: 0;">ℹ️ Was ist der Sage Sync Agent?</h3>
+        <p>Der Sage Sync Agent ist ein Windows-Dienst, der auf dem Server Ihres Kunden installiert wird. Er überwacht den lokalen Sage-Exportordner und lädt neue Dokumente automatisch in das DMS hoch.</p>
+        
+        <h4>Funktionen:</h4>
+        <ul>
+            <li><strong>Ordner-Überwachung:</strong> Erkennt neue Dateien automatisch</li>
+            <li><strong>Sichere Übertragung:</strong> Verschlüsselte HTTPS-Verbindung</li>
+            <li><strong>Offline-Queue:</strong> Puffert bei Netzwerkproblemen</li>
+            <li><strong>Windows-Dienst:</strong> Läuft automatisch im Hintergrund</li>
+        </ul>
+    </div>
+
+    <h2>Mandanten mit Sage-Code</h2>
+    <p>Wählen Sie einen Mandanten, um den vorkonfigurierten Agent herunterzuladen:</p>
+
+    {% if tenants %}
+    <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <thead>
+            <tr style="background: #007e45; color: white;">
+                <th style="padding: 12px 15px; text-align: left;">Mandant</th>
+                <th style="padding: 12px 15px; text-align: left;">Unternehmen</th>
+                <th style="padding: 12px 15px; text-align: left;">Sage-Code</th>
+                <th style="padding: 12px 15px; text-align: left;">Agent-Status</th>
+                <th style="padding: 12px 15px; text-align: center;">Download</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tenant in tenants %}
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 12px 15px;">
+                    <strong>{{ tenant.name }}</strong>
+                </td>
+                <td style="padding: 12px 15px;">
+                    {% if tenant.company %}{{ tenant.company.name }}{% else %}-{% endif %}
+                </td>
+                <td style="padding: 12px 15px;">
+                    <code style="background: #e9ecef; padding: 2px 6px; border-radius: 4px;">{{ tenant.code }}</code>
+                </td>
+                <td style="padding: 12px 15px;">
+                    {% if tenant.agent_last_seen %}
+                        {% load tz %}
+                        {% now "U" as now_timestamp %}
+                        {% widthratio tenant.agent_last_seen|date:"U" 1 1 as last_seen_timestamp %}
+                        <span style="background: #28a745; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px;">
+                            🟢 Online
+                        </span>
+                        <br><small style="color: #666;">v{{ tenant.agent_version }}</small>
+                    {% else %}
+                        <span style="background: #6c757d; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px;">
+                            ⚪ Nicht installiert
+                        </span>
+                    {% endif %}
+                </td>
+                <td style="padding: 12px 15px; text-align: center;">
+                    <a href="{% url 'dms_agent_download_zip' tenant.id %}" 
+                       style="display: inline-block; background: #007e45; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: 500;">
+                        ⬇️ ZIP herunterladen
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 20px; border-radius: 8px; text-align: center;">
+        <p style="margin: 0;">
+            <strong>Keine Mandanten mit Sage-Code gefunden.</strong><br>
+            Mandanten benötigen einen Sage-Code, um den Agent nutzen zu können.
+        </p>
+    </div>
+    {% endif %}
+
+    <div style="margin-top: 30px; padding: 20px; background: #e7f5ff; border-radius: 8px; border-left: 4px solid #007e45;">
+        <h4 style="margin-top: 0;">🔧 Für Entwickler: Agent selbst kompilieren</h4>
+        <p>Der Agent-Quellcode befindet sich im Ordner <code>sage-sync-agent/</code>.</p>
+        <pre style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 6px; overflow-x: auto;">
+# Für Windows (Cross-Compile von Linux):
+GOOS=windows GOARCH=amd64 go build -o SageSyncAgent.exe ./cmd/agent
+
+# Auf Windows direkt:
+go build -o SageSyncAgent.exe ./cmd/agent</pre>
+    </div>
+</div>
+{% endblock %}

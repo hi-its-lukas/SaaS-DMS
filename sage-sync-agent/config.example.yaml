@@ -1,0 +1,10 @@
+dms_url: https://portal.personalmappe.cloud
+watch_folder: C:\SageArchiv\Mandant0001
+processed_folder: C:\SageArchiv\Mandant0001\processed
+tenant_code: "00000001"
+include_patterns:
+  - "*.pdf"
+  - "*.xlsx"
+  - "*.docx"
+stability_seconds: 5
+heartbeat_interval_seconds: 300

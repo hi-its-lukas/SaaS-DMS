@@ -244,11 +244,14 @@ class TenantAdmin(ModelAdmin):
     Admin for Tenants (Mandanten).
     Tenants belong to a Company and are created by Company admins.
     """
-    list_display = ['name', 'company', 'code', 'is_active_badge', 'user_count', 'created_at']
+    list_display = ['name', 'company', 'code', 'is_active_badge', 'agent_status_badge', 'user_count', 'created_at']
     list_filter = ['is_active', 'company']
     search_fields = ['code', 'name', 'company__name']
     inlines = [TenantUserInline]
-    readonly_fields = ['ingest_token', 'ingest_email_display', 'created_at', 'created_by']
+    readonly_fields = [
+        'ingest_token', 'ingest_email_display', 'created_at', 'created_by',
+        'agent_last_seen', 'agent_version', 'agent_status', 'agent_queue_size', 'agent_ip'
+    ]
     
     fieldsets = (
         ('Mandant', {
@@ -263,6 +266,11 @@ class TenantAdmin(ModelAdmin):
             'fields': ('ingest_token', 'ingest_email_display'),
             'description': 'Dokumente an diese E-Mail-Adresse senden, um sie automatisch diesem Mandanten zuzuordnen.'
         }),
+        ('Sage Sync Agent Status', {
+            'fields': ('agent_last_seen', 'agent_version', 'agent_status', 'agent_queue_size', 'agent_ip'),
+            'description': 'Status des installierten Sage Sync Agents auf dem Kundenserver.',
+            'classes': ('collapse',)
+        }),
         ('Verwaltung', {
             'fields': ('created_at', 'created_by'),
             'classes': ('collapse',)
@@ -272,6 +280,25 @@ class TenantAdmin(ModelAdmin):
     @display(description="Status", label={"Aktiv": "success", "Inaktiv": "danger"})
     def is_active_badge(self, obj):
         return "Aktiv" if obj.is_active else "Inaktiv"
+    
+    @display(
+        description="Agent",
+        label={
+            "Online": "success",
+            "Offline": "danger",
+            "Nicht installiert": "secondary",
+        }
+    )
+    def agent_status_badge(self, obj):
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        if not obj.agent_last_seen:
+            return "Nicht installiert"
+        
+        if timezone.now() - obj.agent_last_seen < timedelta(minutes=10):
+            return "Online"
+        return "Offline"
     
     @display(description="Ingest-E-Mail-Adresse")
     def ingest_email_display(self, obj):

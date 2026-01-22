@@ -192,6 +192,28 @@ class Tenant(models.Model):
         help_text="Tenant-spezifischer Verschlüsselungsschlüssel (KEK-verschlüsselt)"
     )
     
+    # Agent Status Fields (updated by heartbeat)
+    agent_last_seen = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="Agent zuletzt gesehen"
+    )
+    agent_version = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name="Agent-Version"
+    )
+    agent_status = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name="Agent-Status"
+    )
+    agent_queue_size = models.IntegerField(
+        default=0,
+        verbose_name="Agent-Warteschlange"
+    )
+    agent_ip = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name="Agent-IP"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(

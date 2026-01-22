@@ -1,0 +1,92 @@
+Hier ist meine Bewertung und Empfehlung zu deinem Konzept-Entwurf.
+
+Das von dir skizzierte Konzept ist sehr solide und deckt die wichtigsten Aspekte für einen stabilen Produktionsbetrieb ab (Queueing, Retry, Token-Auth).
+
+Meine Empfehlung: Technologie-Wahl
+Obwohl wir im Backend Python (Django) nutzen, empfehle ich für den Windows-Client (Agent) ganz klar: Go (Golang).
+
+Warum Go statt Python für den Agent?
+Single Binary (Deployment): Go kompiliert in eine einzige .exe Datei (statisch gelinkt). Es gibt keine Abhängigkeiten (dlls, Python Interpreter), die auf dem Kunden-Server fehlen könnten. Bei Python/PyInstaller entsteht oft ein Ordner mit tausenden Dateien oder ein großes Archiv, das beim Start langsam entpackt wird.
+
+Anti-Virus Probleme (Kritisch): EXE-Dateien, die mit PyInstaller erstellt wurden, werden von Virenscannern auf Windows-Servern sehr häufig als False-Positive (Trojaner) erkannt. Das verursacht massiven Support-Aufwand bei deinen Kunden. Go-Binaries sind hier deutlich unproblematischer.
+
+Ressourcen: Der Go-Agent verbraucht im Leerlauf extrem wenig RAM (~5-10 MB) und CPU. Das ist wichtig, da Sage-Server oft leistungsschwach sind.
+
+Windows-Service Integration: Go hat exzellente Bibliotheken (golang.org/x/sys/windows/svc), um native Windows-Dienste zu erstellen, ohne Wrapper wie NSSM zu benötigen.
+
+Verfeinerung des Konzepts (Best Practices)
+Hier sind Ergänzungen zu deinem Konzept, um typische Fallstricke bei der Dateiüberwachung ("File Locking") zu vermeiden.
+
+1. Erweiterte "File Ready" Logik (Wichtig!)
+Sage (und Scanner) schreiben Dateien oft in Chunks. Eine Datei ist nicht fertig, nur weil sie existiert.
+
+Dein Ansatz: Dateigröße stabil für X Sekunden. (Gut)
+
+Ergänzung: Versuch eines exklusiven File-Handles. Bevor der Upload startet, sollte der Agent versuchen, die Datei kurz im Modus OPEN_EXISTING mit FILE_SHARE_NONE zu öffnen. Wenn das fehlschlägt (Exception), schreibt Sage noch -> Warten. Erst wenn das Öffnen klappt, ist die Datei wirklich sicher fertig.
+
+2. Heartbeat / Status-Ping
+Der SaaS-Admin muss wissen, ob der Agent beim Kunden noch läuft.
+
+Funktion: Der Agent sendet alle 5 Minuten einen leeren Ping an POST /api/v1/agent/heartbeat/.
+
+Payload: { "tenant_token": "...", "version": "1.0.1", "status": "idle", "queue_size": 0 }
+
+Nutzen: Im Dashboard kannst du anzeigen: 🟢 "Online" oder 🔴 "Seit 1h offline".
+
+3. Auto-Updater (Day 2 Operation)
+Du wirst Bugs im Agent fixen müssen. Kunden können/wollen nicht manuell updaten.
+
+Konzept: Beim Heartbeat prüft der Agent, ob eine neue Version vorliegt.
+
+Ablauf: Wenn Update verfügbar -> Download der neuen EXE -> Alter Dienst stoppen -> EXE tauschen -> Dienst starten.
+
+Tipp für MVP: Zumindest eine Version-Check-Logik einbauen, die im Log warnt "Update verfügbar".
+
+4. Erweiterte Architektur (Go-basiert)
+Plaintext
+┌───────────────────────────────────────────────────────────────┐
+│                   Sage Sync Agent (Go)                        │
+├─────────────┬──────────────┬──────────────────┬───────────────┤
+│  Watcher    │  Stabilizer  │   Queue (BoltDB) │   Worker      │
+│             │              │                  │               │
+│ - fsnotify  │ - Checkt     │ - Persistente    │ - Liest Queue │
+│   (Win API) │   File-Lock  │   Key-Value DB   │ - Upload via  │
+│             │ - Debounce   │   (Embedded)     │   HTTP/2      │
+└─────────────┴──────────────┴──────────────────┴───────────────┘
+       ▲              ▲               ▲                 │
+       │              │               │                 ▼
+  [File Event]   [Is Locked?]    [Enqueue]        [API Upload]
+Zusammenfassung für den Entwickler
+Hier ist der konkrete Arbeitsauftrag für die Umsetzung des MVPs:
+
+Sprache: Go (Golang).
+
+Bibliotheken:
+
+File Watcher: github.com/fsnotify/fsnotify
+
+Windows Service: github.com/kardianos/service (Sehr gut, abstrahiert die Installation/Deinstallation des Dienstes).
+
+Config: gopkg.in/yaml.v3
+
+HTTP Client: Standard net/http (mit Retryable Transport, z.B. github.com/hashicorp/go-retryablehttp).
+
+Logging: github.com/rs/zerolog (Strukturiertes JSON-Logging, gut für Parsing später).
+
+Ablauflogik:
+
+Programm startet -> Lädt Config -> Prüft API-Erreichbarkeit.
+
+Registriert Watcher auf watch_folder.
+
+Bei CREATE oder WRITE Event -> Datei in interne "Pending List" aufnehmen.
+
+Loop prüft Pending List: Ist Datei entsperrt (Lock-Check)?
+
+Wenn ja -> Upload an API.
+
+Wenn Upload HTTP 200/201 -> Datei verschieben nach processed_folder (mit Timestamp im Namen um Duplikate im Dateisystem zu vermeiden).
+
+Wenn Upload Fehler -> Retry (Exponential Backoff).
+
+Dies ist die robusteste Lösung für eine "Install & Forget" Komponente auf Kundenservern.

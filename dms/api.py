@@ -264,3 +264,60 @@ def api_tenant_info(request):
         'document_count': tenant.documents.count(),
         'employee_count': tenant.employees.count() if hasattr(tenant, 'employees') else 0
     })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_agent_heartbeat(request):
+    """
+    Agent heartbeat endpoint for status monitoring.
+    
+    Endpoint: POST /api/v1/agent/heartbeat/
+    Auth: Header X-DMS-Token: <tenant.ingest_token>
+    
+    Body (JSON):
+        - version: Agent version string
+        - status: Agent status (running, idle, error)
+        - queue_size: Number of files in upload queue
+    
+    Returns:
+        - 200: {"status": "ok", "update_available": false, "latest_version": "1.0.0"}
+    """
+    token = request.headers.get('X-DMS-Token')
+    if not token:
+        return JsonResponse({'error': 'Missing Token'}, status=401)
+    
+    try:
+        tenant = Tenant.objects.get(ingest_token=token, is_active=True)
+    except Tenant.DoesNotExist:
+        return JsonResponse({'error': 'Invalid Token'}, status=403)
+    
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        data = {}
+    
+    agent_version = data.get('version', 'unknown')
+    agent_status = data.get('status', 'unknown')
+    queue_size = data.get('queue_size', 0)
+    
+    client_ip = get_client_ip(request)
+    
+    tenant.agent_last_seen = timezone.now()
+    tenant.agent_version = agent_version
+    tenant.agent_status = agent_status
+    tenant.agent_queue_size = queue_size
+    tenant.agent_ip = client_ip
+    tenant.save(update_fields=[
+        'agent_last_seen', 'agent_version', 'agent_status', 
+        'agent_queue_size', 'agent_ip'
+    ])
+    
+    latest_version = "1.0.0"
+    update_available = agent_version != latest_version and agent_version != "unknown"
+    
+    return JsonResponse({
+        'status': 'ok',
+        'update_available': update_available,
+        'latest_version': latest_version
+    })

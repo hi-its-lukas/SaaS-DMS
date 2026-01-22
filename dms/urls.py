@@ -9,6 +9,7 @@ urlpatterns = [
     path('api/v1/health/', api.api_health, name='api_health'),
     path('api/v1/tenant/', api.api_tenant_info, name='api_tenant_info'),
     path('api/v1/ingest/document/', api.api_upload_document, name='api_upload_document'),
+    path('api/v1/agent/heartbeat/', api.api_agent_heartbeat, name='api_agent_heartbeat'),
     
     # Web UI
     path('', views.index, name='index'),
