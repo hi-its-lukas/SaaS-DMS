@@ -37,3 +37,4 @@ o365_token_*.txt
 # OS
 .DS_Store
 Thumbs.db
+attached_assets/
