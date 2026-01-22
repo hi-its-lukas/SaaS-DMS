@@ -58,8 +58,10 @@ Major refactoring for Cloud-Native SaaS architecture:
 - Features: fsnotify Watcher, BoltDB Queue, Windows Credential Manager
 - Heartbeat-Endpoint: `POST /api/v1/agent/heartbeat/`
 - Admin-Download: `/admin/dms/agent-download/` (Root-Admin only)
+- Admin-Upload: `/admin/dms/agent-upload/` (EXE nach Azure hochladen)
 - Build: `cd dms-sync-agent && make build-windows`
 - Agent-Status wird im Tenant-Admin angezeigt (Online/Offline)
+- Binary-Storage: Azure Blob `system/agent-binaries/DMSSyncAgent.exe`
 
 ## System Architecture
 

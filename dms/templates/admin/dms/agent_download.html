@@ -13,6 +13,30 @@
         </p>
     </div>
 
+    {% if agent_available %}
+    <div style="background: #d4edda; border: 1px solid #28a745; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <strong style="color: #155724;">✅ Agent-Binary verfügbar</strong>
+        <p style="margin: 5px 0 0 0; color: #155724;">
+            Version: {{ agent_version }} | Größe: {{ agent_size|filesizeformat }}
+        </p>
+    </div>
+    {% else %}
+    <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <strong style="color: #856404;">⚠️ Agent-Binary nicht hochgeladen</strong>
+        <p style="margin: 5px 0 0 0; color: #856404;">
+            Die ZIP-Downloads enthalten einen Platzhalter. Bitte laden Sie die kompilierte EXE hoch.
+        </p>
+        <form method="post" action="{% url 'dms_agent_upload' %}" enctype="multipart/form-data" style="margin-top: 10px;">
+            {% csrf_token %}
+            <input type="file" name="agent_exe" accept=".exe" required style="margin-right: 10px;">
+            <input type="text" name="version" placeholder="Version (z.B. 1.0.0)" style="padding: 5px; margin-right: 10px; width: 120px;">
+            <button type="submit" style="background: #007e45; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">
+                Hochladen
+            </button>
+        </form>
+    </div>
+    {% endif %}
+
     <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
         <h3 style="margin-top: 0;">ℹ️ Was ist der DMS Sync Agent?</h3>
         <p>Der DMS Sync Agent ist ein Windows-Dienst, der auf dem Server Ihres Kunden installiert wird. Er überwacht lokale Exportordner und lädt neue Dokumente automatisch in das DMS hoch.</p>
@@ -26,7 +50,7 @@
         </ul>
     </div>
 
-    <h2>Mandanten mit Sage-Code</h2>
+    <h2>Mandanten mit Mandanten-Code</h2>
     <p>Wählen Sie einen Mandanten, um den vorkonfigurierten Agent herunterzuladen:</p>
 
     {% if tenants %}
@@ -35,7 +59,7 @@
             <tr style="background: #007e45; color: white;">
                 <th style="padding: 12px 15px; text-align: left;">Mandant</th>
                 <th style="padding: 12px 15px; text-align: left;">Unternehmen</th>
-                <th style="padding: 12px 15px; text-align: left;">Sage-Code</th>
+                <th style="padding: 12px 15px; text-align: left;">Code</th>
                 <th style="padding: 12px 15px; text-align: left;">Agent-Status</th>
                 <th style="padding: 12px 15px; text-align: center;">Download</th>
             </tr>
@@ -80,8 +104,8 @@
     {% else %}
     <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 20px; border-radius: 8px; text-align: center;">
         <p style="margin: 0;">
-            <strong>Keine Mandanten mit Sage-Code gefunden.</strong><br>
-            Mandanten benötigen einen Sage-Code, um den Agent nutzen zu können.
+            <strong>Keine Mandanten mit Code gefunden.</strong><br>
+            Mandanten benötigen einen Code, um den Agent nutzen zu können.
         </p>
     </div>
     {% endif %}
@@ -91,10 +115,15 @@
         <p>Der Agent-Quellcode befindet sich im Ordner <code>dms-sync-agent/</code>.</p>
         <pre style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 6px; overflow-x: auto;">
 # Für Windows (Cross-Compile von Linux):
+cd dms-sync-agent
 GOOS=windows GOARCH=amd64 go build -o DMSSyncAgent.exe ./cmd/agent
 
-# Auf Windows direkt:
-go build -o DMSSyncAgent.exe ./cmd/agent</pre>
+# Dann hier hochladen oder via Azure CLI:
+az storage blob upload \
+  --container-name system \
+  --name agent-binaries/DMSSyncAgent.exe \
+  --file DMSSyncAgent.exe \
+  --metadata version=1.0.0</pre>
     </div>
 </div>
 {% endblock %}
