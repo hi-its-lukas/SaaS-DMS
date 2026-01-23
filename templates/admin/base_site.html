@@ -101,9 +101,8 @@
         box-sizing: border-box;
     }
 
-    /* Nav-Sidebar (Standard Django/Jazzmin) MUST be hidden for Unfold */
-    #nav-sidebar,
-    .main-sidebar:not([data-unfold-sidebar]) {
+    /* Jazzmin/AdminLTE ONLY - removed #nav-sidebar as Unfold uses the same ID */
+    .main-sidebar:not(.bg-base-50) {
         display: none !important;
         width: 0 !important;
         overflow: hidden !important;
@@ -114,10 +113,8 @@
         padding-left: 0 !important;
     }
 
-    .main,
-    .main-sidebar {
+    .main {
         margin-left: 0 !important;
-        display: none !important;
     }
 
     #content,
