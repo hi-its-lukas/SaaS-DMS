@@ -99,6 +99,22 @@ class Company(models.Model):
         related_name='created_companies',
         verbose_name="Erstellt von"
     )
+
+    # Support Access for Root-Admin
+    support_access_granted_until = models.DateTimeField(
+        null=True, 
+        blank=True,
+        verbose_name="Support-Zugriff gültig bis",
+        help_text="Bis zu diesem Zeitpunkt darf der Root-Admin auf die Daten zugreifen."
+    )
+    support_access_granted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True, 
+        blank=True,
+        related_name='granted_support_access',
+        verbose_name="Support-Zugriff erteilt von"
+    )
     
     class Meta:
         ordering = ['name']
@@ -143,6 +159,28 @@ class Company(models.Model):
         return max(0, self.license_max_personnel_files - self.current_personnel_files_count)
 
 
+class CompanyUser(models.Model):
+    """
+    Represents a Company-level administrator.
+    This user manages the company configuration and can create Tenants.
+    """
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='company_users')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='company_memberships')
+    is_main_admin = models.BooleanField(
+        default=False, 
+        verbose_name="Haupt-Administrator",
+        help_text="Ist Hauptansprechpartner für dieses Unternehmen"
+    )
+    
+    class Meta:
+        unique_together = ['company', 'user']
+        verbose_name = "Unternehmens-Administrator"
+        verbose_name_plural = "Unternehmens-Administratoren"
+    
+    def __str__(self):
+        return f"{self.user.username} @ {self.company.name}"
+
+
 class Tenant(models.Model):
     """
     Represents a Mandant within a Company.
@@ -173,14 +211,14 @@ class Tenant(models.Model):
     description = models.TextField(blank=True, verbose_name="Beschreibung")
     is_active = models.BooleanField(default=True, verbose_name="Aktiv")
     
-    ingest_token = models.CharField(
-        max_length=12, 
+    ingest_token_hash = models.CharField(
+        max_length=64, 
         unique=True, 
         db_index=True,
         null=True,
         blank=True,
-        verbose_name="Ingest-Token",
-        help_text="Token für E-Mail-Routing (upload.<token>@dms.cloud)"
+        verbose_name="Ingest-Token (Hash)",
+        help_text="Hash des E-Mail/Upload-Tokens"
     )
     
     # DEK (Data Encryption Key) encrypted with KEK (Master Key)
@@ -231,16 +269,41 @@ class Tenant(models.Model):
         return self.name
     
     def save(self, *args, **kwargs):
-        if not self.ingest_token:
+        # Auto-generate token hash if not set (first save)
+        # Note: We cannot recover the plain token here! 
+        # Use reset_ingest_token() explicitly if you need to show it.
+        if not self.ingest_token_hash and self._state.adding:
             import secrets
-            self.ingest_token = secrets.token_hex(6)
+            import hashlib
+            raw_token = secrets.token_hex(16)
+            self.ingest_token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
         
         # Generate DEK on first save if not present
         if not self.encrypted_dek:
             from dms.encryption import generate_tenant_dek
             self.encrypted_dek = generate_tenant_dek()
+
+        # Validate License Limits if Company is set
+        if self.company:
+            # Check for limit only on CREATION (not updates)
+            if self._state.adding:
+                if self.company.license_mandanten_remaining <= 0:
+                    from django.core.exceptions import ValidationError
+                    raise ValidationError(f"Lizenzlimit erreicht: Maximal {self.company.license_max_mandanten} Mandanten erlaubt.")
         
         super().save(*args, **kwargs)
+    
+    def reset_ingest_token(self):
+        """
+        Generates a new token, saves the hash, and RETURNS the plain token.
+        This is the only time the token is visible.
+        """
+        import secrets
+        import hashlib
+        raw_token = secrets.token_hex(16)
+        self.ingest_token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        self.save(update_fields=['ingest_token_hash'])
+        return raw_token
     
     def get_dek(self):
         """Decrypt and return this tenant's DEK."""
@@ -372,6 +435,17 @@ class TenantUser(models.Model):
         unique_together = ['user', 'tenant']
         verbose_name = "Mandanten-Benutzer"
         verbose_name_plural = "Mandanten-Benutzer"
+    
+    def save(self, *args, **kwargs):
+        # Validate License Limits for Users
+        if self._state.adding: # Only on creation
+            # Find the company through the tenant
+            if self.tenant and self.tenant.company:
+                company = self.tenant.company
+                if company.license_users_remaining <= 0:
+                    from django.core.exceptions import ValidationError
+                    raise ValidationError(f"Lizenzlimit erreicht: Maximal {company.license_max_users} Benutzer im Unternehmen erlaubt.")
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.user.username} @ {self.tenant.code}"
@@ -991,6 +1065,16 @@ class PersonnelFile(models.Model):
     def document_count(self):
         return self.file_entries.count()
     document_count.short_description = "Dokumente"
+
+    def save(self, *args, **kwargs):
+        # Validate License Limits for Personnel Files
+        if self._state.adding: # Only on creation
+            if self.tenant and self.tenant.company:
+                company = self.tenant.company
+                if company.license_personnel_files_remaining <= 0:
+                    from django.core.exceptions import ValidationError
+                    raise ValidationError(f"Lizenzlimit erreicht: Maximal {company.license_max_personnel_files} Personalakten im Unternehmen erlaubt.")
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ['file_number']

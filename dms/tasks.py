@@ -15,6 +15,9 @@ from .encryption import encrypt_data, decrypt_data, calculate_sha256, encrypt_fi
 from .ocr import process_document_with_ocr, classify_document, extract_employee_info
 from .middleware import set_current_tenant, clear_tenant_context
 import re
+import tempfile
+import os
+from django.db import transaction
 
 
 @contextmanager
@@ -1204,88 +1207,88 @@ def _run_sage_scan(task_self):
                             status = 'COMPANY'
                 else:
                     doc_type, is_personnel, category, description = classify_sage_document(file_path.name)
-                status = 'COMPANY' if not is_personnel else 'UNASSIGNED'
-            
-            # Content erst hier laden (nach Split-Check für Memory-Optimierung)
-            with open(file_path, 'rb') as f:
-                content = f.read()
-            encrypted_content = encrypt_data(content)
-            file_size = len(content)
-            
-            metadata = {
-                'original_path': str(file_path),
-                'needs_review': needs_review,
-                'tenant_code': tenant_code,
-                'doc_type': doc_type,
-                'doc_type_description': description,
-                'is_personnel_document': is_personnel,
-                'category_code': category,
-                'month_folder': month_folder,
-            }
-            
-            if dm_result:
-                metadata['datamatrix'] = {
-                    'success': dm_result['success'],
-                    'codes_found': len(dm_result['codes']),
-                    'employee_ids': dm_result['employee_ids'],
+                    status = 'COMPANY' if not is_personnel else 'UNASSIGNED'
+                
+                # Content erst hier laden (nach Split-Check für Memory-Optimierung)
+                with open(file_path, 'rb') as f:
+                    content = f.read()
+                encrypted_content = encrypt_data(content)
+                file_size = len(content)
+                
+                metadata = {
+                    'original_path': str(file_path),
+                    'needs_review': needs_review,
+                    'tenant_code': tenant_code,
+                    'doc_type': doc_type,
+                    'doc_type_description': description,
+                    'is_personnel_document': is_personnel,
+                    'category_code': category,
+                    'month_folder': month_folder,
                 }
-            
-            # DocumentType aus Sage-Klassifizierung holen oder erstellen
-            document_type_obj = None
-            if doc_type and doc_type != 'UNBEKANNT':
-                document_type_obj = get_or_create_document_type(doc_type, description, category, tenant)
-            
-            # DB-Operationen in einem Block
-            period_year, period_month = parse_month_folder(month_folder)
-            document = Document.objects.create(
-                tenant=tenant,
-                title=file_path.stem,
-                original_filename=file_path.name,
-                file_extension=file_path.suffix,
-                mime_type=mime_type,
-                encrypted_content=encrypted_content,
-                file_size=file_size,
-                employee=employee,
-                document_type=document_type_obj,
-                status=status,
-                source='SAGE',
-                sha256_hash=file_hash,
-                metadata=metadata,
-                period_year=period_year,
-                period_month=period_month
-            )
-            
-            ProcessedFile.objects.create(
-                tenant=tenant,
-                sha256_hash=file_hash,
-                original_path=str(file_path),
-                document=document
-            )
-            
-            # Auto-Klassifizierung anhand Matching-Regeln
-            auto_classify_document(document, tenant=tenant)
-            
-            # Aufgabe erstellen bei REVIEW_NEEDED
-            if status == 'REVIEW_NEEDED':
-                create_review_task(document, source='SAGE_ARCHIVE')
-            
-            # Speicher freigeben
-            del content
-            del encrypted_content
-            
-            # Hash zu known_hashes hinzufügen für Duplikat-Check (thread-safe)
-            with hashes_lock:
-                if tenant_code not in known_hashes_by_tenant:
-                    known_hashes_by_tenant[tenant_code] = set()
-                known_hashes_by_tenant[tenant_code].add(file_hash)
-            
-            with counter_lock:
-                processed_count += 1
-                if is_personnel:
-                    personnel_docs += 1
-                else:
-                    company_docs += 1
-            
+                
+                if dm_result:
+                    metadata['datamatrix'] = {
+                        'success': dm_result['success'],
+                        'codes_found': len(dm_result['codes']),
+                        'employee_ids': dm_result['employee_ids'],
+                    }
+                
+                # DocumentType aus Sage-Klassifizierung holen oder erstellen
+                document_type_obj = None
+                if doc_type and doc_type != 'UNBEKANNT':
+                    document_type_obj = get_or_create_document_type(doc_type, description, category, tenant)
+                
+                # DB-Operationen in einem Block
+                period_year, period_month = parse_month_folder(month_folder)
+                document = Document.objects.create(
+                    tenant=tenant,
+                    title=file_path.stem,
+                    original_filename=file_path.name,
+                    file_extension=file_path.suffix,
+                    mime_type=mime_type,
+                    encrypted_content=encrypted_content,
+                    file_size=file_size,
+                    employee=employee,
+                    document_type=document_type_obj,
+                    status=status,
+                    source='SAGE',
+                    sha256_hash=file_hash,
+                    metadata=metadata,
+                    period_year=period_year,
+                    period_month=period_month
+                )
+                
+                ProcessedFile.objects.create(
+                    tenant=tenant,
+                    sha256_hash=file_hash,
+                    original_path=str(file_path),
+                    document=document
+                )
+                
+                # Auto-Klassifizierung anhand Matching-Regeln
+                auto_classify_document(document, tenant=tenant)
+                
+                # Aufgabe erstellen bei REVIEW_NEEDED
+                if status == 'REVIEW_NEEDED':
+                    create_review_task(document, source='SAGE_ARCHIVE')
+                
+                # Speicher freigeben
+                del content
+                del encrypted_content
+                
+                # Hash zu known_hashes hinzufügen für Duplikat-Check (thread-safe)
+                with hashes_lock:
+                    if tenant_code not in known_hashes_by_tenant:
+                        known_hashes_by_tenant[tenant_code] = set()
+                    known_hashes_by_tenant[tenant_code].add(file_hash)
+                
+                with counter_lock:
+                    processed_count += 1
+                    if is_personnel:
+                        personnel_docs += 1
+                    else:
+                        company_docs += 1
+                
                 return {'success': True, 'is_personnel': is_personnel, 'needs_review': needs_review, 
                         'filename': file_path.name, 'doc_id': str(document.id), 'tenant': tenant_code}
                 
@@ -1870,12 +1873,16 @@ def extract_tenant_from_recipients(message):
         
         if match:
             token = match.group(1)
+            # Hash token before lookup
+            import hashlib
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            
             try:
-                tenant = Tenant.objects.get(ingest_token=token, is_active=True)
+                tenant = Tenant.objects.get(ingest_token_hash=token_hash, is_active=True)
                 return tenant
             except Tenant.DoesNotExist:
                 log_system_event('WARNING', 'CentralIngest', 
-                    f'Unbekanntes Ingest-Token: {token}',
+                    f'Unbekanntes Ingest-Token: {token} (Hash: {token_hash})',
                     {'email': email_address})
                 continue
     
@@ -2100,3 +2107,283 @@ def import_sage_cloud_timesheets(self, year: int = None, month: int = None):
         log_system_event('ERROR', 'SageCloudImport', 
             f'Zeiterfassungs-Import fehlgeschlagen: {str(e)}')
         raise self.retry(exc=e, countdown=300)
+@shared_task(bind=True, max_retries=3)
+def process_imported_document(self, document_id):
+    """
+    Verarbeitet ein importiertes Dokument asynchron.
+    - Entschlüsselt Dokument
+    - Prüft auf DataMatrix-Codes (Sage)
+    - Teilt PDF bei Bedarf (Lohnscheine)
+    - Führt Auto-Klassifizierung durch
+    - Erstellt Aufgaben bei Klärungsbedarf
+    """
+    try:
+        document = Document.objects.get(id=document_id)
+    except Document.DoesNotExist:
+        logger.error(f"ProcessDocument: Document {document_id} not found")
+        return "Document not found"
+        
+    log_system_event('INFO', 'ProcessDocument', f"Starte Verarbeitung für {document.original_filename} ({document_id})",
+                     {'tenant': document.tenant.code if document.tenant else 'global'})
+
+    try:
+        # Tenant Kontext setzen
+        with tenant_context(document.tenant):
+            # 1. Inhalt entschlüsseln und temporär speichern (für PDF Processing)
+            decrypted_content = decrypt_data(document.encrypted_content)
+            
+            with tempfile.NamedTemporaryFile(suffix=document.file_extension, delete=False) as temp_file:
+                temp_file.write(decrypted_content)
+                temp_file_path = temp_file.name
+                
+            try:
+                # 2. Prüfen ob PDF und Verarbeitung notwendig
+                is_pdf = document.mime_type == 'application/pdf' or document.file_extension.lower() == '.pdf'
+                
+                dm_result = None
+                split_occurred = False
+                
+                if is_pdf:
+                    # Klassifizierung vorab prüfen um zu sehen ob es Personaldokumente sein könnten
+                    doc_type_guess, is_personnel_guess, _, _ = classify_sage_document(document.original_filename)
+                    
+                    if is_personnel_guess:
+                         # Versuch Split wenn DataMatrix vorhanden
+                        split_output_dir = Path(settings.BASE_DIR) / 'data' / 'split_temp' / (document.tenant.code if document.tenant else 'global')
+                        split_results = split_pdf_by_datamatrix(temp_file_path, str(split_output_dir))
+                        
+                        if split_results and len(split_results) > 1:
+                            # SPLIT FALL
+                            log_system_event('INFO', 'ProcessDocument', f"PDF Split erfolgreich: {len(split_results)} Teile")
+                            
+                            for split_info in split_results:
+                                _create_split_document(document, split_info, decrypted_content=None) # Helper creates new docs
+                                
+                            # Original Dokument archivieren/löschen da aufgeteilt
+                            document.status = 'ARCHIVED'
+                            document.notes += "\nAutomatisch aufgeteilt und archiviert."
+                            document.save(update_fields=['status', 'notes', 'updated_at'])
+                            split_occurred = True
+                        
+                        else:
+                             # Kein Split, aber vielleicht Einzel-DataMatrix?
+                             dm_result = extract_employee_from_datamatrix(temp_file_path)
+
+                if not split_occurred:
+                    # 3. Metadaten extrahieren und anreichern
+                    metadata = document.metadata or {}
+                    
+                    if dm_result and dm_result['success']:
+                         metadata['datamatrix'] = {
+                            'codes_found': len(dm_result['codes']),
+                            'employee_ids': dm_result['employee_ids']
+                         }
+                         
+                         # Mandant Code aus DataMatrix prüfen
+                         if dm_result.get('mandant_code'):
+                             metadata['mandant_code_dm'] = dm_result.get('mandant_code')
+                    
+                    # 4. Klassifizierung & Zuordnung
+                    doc_type, is_personnel, category, description = classify_sage_document(document.original_filename)
+                    
+                    employee = document.employee
+                    if not employee and dm_result and dm_result.get('employee_ids'):
+                        for emp_id in dm_result['employee_ids']:
+                            employee = find_employee_by_id(emp_id, tenant=document.tenant, mandant_code=dm_result.get('mandant_code'))
+                            if employee:
+                                break
+                    
+                    # Update Document
+                    document.document_type = get_or_create_document_type(doc_type, description, category, document.tenant) if doc_type != 'UNBEKANNT' else None
+                    document.employee = employee
+                    
+                    if employee:
+                        document.status = 'ASSIGNED'
+                    elif is_personnel:
+                        document.status = 'REVIEW_NEEDED'
+                    elif doc_type != 'UNBEKANNT':
+                        document.status = 'COMPANY'
+                        
+                    # Metadaten update
+                    metadata.update({
+                        'doc_type': doc_type,
+                        'is_personnel_document': is_personnel,
+                        'doc_type_description': description,
+                        'processed_at': str(timezone.now())
+                    })
+                    document.metadata = metadata
+                    document.save()
+                    
+                    # 5. Auto-Classify Regelwerk anwenden
+                    auto_classify_document(document, tenant=document.tenant)
+                    
+                    # 6. Tasks erstellen falls nötig
+                    if document.status == 'REVIEW_NEEDED':
+                        create_review_task(document, source='API_UPLOAD')
+                        
+                    log_system_event('INFO', 'ProcessDocument', f"Verarbeitung abgeschlossen. Status: {document.status}")
+
+            finally:
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+                    
+    except Exception as e:
+        logger.error(f"Error processing document {document_id}: {e}")
+        log_system_event('ERROR', 'ProcessDocument', f"Fehler bei Verarbeitung: {e}", {'doc_id': str(document_id)})
+        raise self.retry(exc=e, countdown=60)
+
+
+def _create_split_document(parent_doc, split_info, decrypted_content=None):
+    """
+    Helper to create a new document from a split result.
+    """
+    from .models import Document, ProcessedFile
+    
+    split_path = Path(split_info['file_path'])
+    
+    with open(split_path, 'rb') as f:
+        content = f.read()
+    
+    encrypted = encrypt_data(content)
+    file_hash = calculate_sha256(content)
+    
+    # Metadata parsing
+    emp_id = split_info.get('employee_id')
+    tenant = parent_doc.tenant
+    
+    employee = find_employee_by_id(emp_id, tenant=tenant)
+    
+    doc_type, _, category, desc = classify_sage_document(parent_doc.original_filename)
+    
+    new_doc = Document.objects.create(
+        tenant=tenant,
+        title=f"{parent_doc.title} (Teil)",
+        original_filename=split_path.name,
+        file_extension='.pdf',
+        mime_type='application/pdf',
+        encrypted_content=encrypted,
+        file_size=len(content),
+        employee=employee,
+        status='ASSIGNED' if employee else 'REVIEW_NEEDED',
+        source=parent_doc.source,
+        sha256_hash=file_hash,
+        metadata={
+            'split_from': str(parent_doc.id),
+            'original_filename': parent_doc.original_filename,
+            'employee_id_dm': emp_id
+        }
+    )
+    
+    # Document Type assignment
+    if doc_type != 'UNBEKANNT':
+        new_doc.document_type = get_or_create_document_type(doc_type, desc, category, tenant)
+        new_doc.save(update_fields=['document_type'])
+
+    if new_doc.status == 'REVIEW_NEEDED':
+        create_review_task(new_doc, source='SPLIT')
+        
+    # Cleanup split file
+    try:
+        split_path.unlink()
+    except:
+        pass
+        
+    return new_doc
+
+
+@shared_task
+def run_retention_policy():
+    """
+    DSGVO: Löscht Dokumente und Personalakten, deren Aufbewahrungsfrist abgelaufen ist.
+    Regel: retention_until < Heute + 30 Tage Kulanz.
+    """
+    from datetime import timedelta
+    from .models import PersonnelFile, Document
+    
+    # 30 Tage Kulanzzeitraum um versehentliche Löschung zu vermeiden
+    cutoff_date = timezone.now().date() - timedelta(days=30)
+    
+    # 1. Personalakten prüfen
+    expired_files = PersonnelFile.objects.filter(
+        retention_until__lt=cutoff_date,
+        status='ARCHIVED'
+    )
+    
+    files_deleted = 0
+    docs_deleted = 0
+    
+    for pf in expired_files:
+        # Alle Dokumente in der Akte löschen
+        docs = Document.objects.filter(employee=pf.employee)
+        docs_count = docs.count()
+        docs.delete() # Hard delete for GDPR
+        
+        # Akte löschen
+        pf_id = pf.file_number
+        pf.delete()
+        
+        log_system_event('INFO', 'RetentionPolicy', 
+            f"Abgelaufene Personalakte gelöscht: {pf_id}",
+            {'docs_deleted': docs_count}
+        )
+        files_deleted += 1
+        docs_deleted += docs_count
+
+    # 2. Lose Dokumente prüfen (basierend auf DocumentType retention)
+    # Dies ist komplexer, da wir kein explizites retention_until am Dokument haben.
+    # Wir iterieren über DocumentTypes mit retention_days > 0
+    
+    from .models import DocumentType
+    doc_types = DocumentType.objects.filter(retention_days__gt=0)
+    
+    for dt in doc_types:
+        retention_days = dt.retention_days
+        # Erstellungsdatum + Retention < Heute - 30 Tage
+        # => Erstellungsdatum < Heute - 30 - Retention
+        cutoff = timezone.now() - timedelta(days=30 + retention_days)
+        
+        expired_docs = Document.objects.filter(
+            document_type=dt,
+            created_at__lt=cutoff,
+            status='ARCHIVED'
+        )
+        
+        count = expired_docs.count()
+        if count > 0:
+            expired_docs.delete()
+            log_system_event('INFO', 'RetentionPolicy',
+                f"Abgelaufene Dokumente gelöscht (Typ: {dt.name})",
+                {'count': count, 'retention_days': retention_days}
+            )
+            docs_deleted += count
+            
+    return f"Retention Run: {files_deleted} Files, {docs_deleted} Docs deleted"
+
+
+@shared_task
+def cleanup_audit_logs(days=730):
+    """
+    Löscht Audit-Logs die älter als 'days' (Standard: 2 Jahre) sind.
+    """
+    from .models import AuditLog
+    from datetime import timedelta
+    
+    cutoff = timezone.now() - timedelta(days=days)
+    deleted, _ = AuditLog.objects.filter(timestamp__lt=cutoff).delete()
+    
+    if deleted > 0:
+        log_system_event('INFO', 'Cleanup', f"{deleted} alte Audit-Logs gelöscht")
+    return deleted
+
+
+@shared_task
+def cleanup_system_logs(days=90):
+    """
+    Löscht System-Logs die älter als 'days' (Standard: 90 Tage) sind.
+    """
+    cutoff = timezone.now() - timedelta(days=days)
+    deleted, _ = SystemLog.all_objects.filter(timestamp__lt=cutoff).delete()
+    
+    if deleted > 0:
+        log_system_event('INFO', 'Cleanup', f"{deleted} alte System-Logs gelöscht")
+    return deleted

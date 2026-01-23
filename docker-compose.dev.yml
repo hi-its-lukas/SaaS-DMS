@@ -1,0 +1,78 @@
+services:
+  web:
+    build: .
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      # Live-Reload: Mount source code
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    environment:
+      - DEBUG=True
+      - PYTHONUNBUFFERED=1
+      - MFA_DOMAIN=localhost
+
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=dms_db
+      - POSTGRES_USER=dms_user
+      - POSTGRES_PASSWORD=dms_password
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  celery_worker:
+    build: .
+    command: celery -A dms_project worker -l INFO --concurrency=1
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    environment:
+      - DEBUG=True
+      - PYTHONUNBUFFERED=1
+
+  celery_beat:
+    build: .
+    command: celery -A dms_project beat -l INFO
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    environment:
+      - DEBUG=True
+      - PYTHONUNBUFFERED=1
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_volume:
+  media_volume:

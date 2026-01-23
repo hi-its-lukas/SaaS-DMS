@@ -31,6 +31,8 @@ _csrf_origins = [
     'https://*.repl.co',
     'https://*.azurecontainerapps.io',
     'https://*.westeurope.azurecontainerapps.io',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
 ]
 if os.environ.get('CSRF_TRUSTED_ORIGINS'):
     _csrf_origins.extend([o.strip() for o in os.environ.get('CSRF_TRUSTED_ORIGINS').split(',') if o.strip()])
@@ -52,6 +54,9 @@ INSTALLED_APPS = [
     'storages',
     'mfa',
     'dms',
+    # Security Apps
+    'axes',
+    'csp',
 ]
 
 UNFOLD = {
@@ -213,13 +218,16 @@ def environment_callback(request):
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'dms.middleware.TenantMiddleware',
     'mfa.middleware.MFAEnforceMiddleware',
+    # Security Middleware
+    'csp.middleware.CSPMiddleware',
+    'axes.middleware.AxesMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -380,3 +388,43 @@ DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@dms.cloud')
 
 GDPR_CONSENT_VERSION = os.environ.get('GDPR_CONSENT_VERSION', '1.0')
 MFA_MAX_KEYS_PER_ACCOUNT = 5
+
+# =============================================================================
+# SECURITY CONFIGURATION
+# =============================================================================
+
+# HSTS - HTTP Strict Transport Security (1 Year)
+if not DEBUG:
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+# Content Security Policy (CSP)
+# Strict policy: default-src 'self'
+CONTENT_SECURITY_POLICY = {
+    'DIRECTIVES': {
+        'default-src': ["'self'"],
+        'style-src': ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        'script-src': ["'self'"],
+        'font-src': ["'self'", "https://fonts.gstatic.com", "data:"],
+        'img-src': ["'self'", "data:", "https://*.blob.core.windows.net"],
+        'frame-ancestors': ["'self'"],
+    }
+}
+
+# Brute Force Protection (django-axes)
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = 0.5  # 30 minutes (in hours)
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+AXES_RESET_ON_SUCCESS = True
+AXES_ENABLE_ADMIN = True
+
+AUTHENTICATION_BACKENDS = [
+    # AxesStandaloneBackend should be the first backend in the AUTHENTICATION_BACKENDS list.
+    'axes.backends.AxesStandaloneBackend',
+    # Django ModelBackend is the default authentication backend.
+    'django.contrib.auth.backends.ModelBackend',
+]

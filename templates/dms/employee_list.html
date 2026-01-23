@@ -7,94 +7,101 @@
 <div class="card">
     <div class="card-header">
         <h2>Mitarbeiter</h2>
-        <span style="color: var(--text-secondary); font-size: 13px;">{{ employees.paginator.count|default:0 }} Einträge</span>
+        <span style="color: var(--text-secondary); font-size: 13px;">{{ employees.paginator.count|default:0 }}
+            Einträge</span>
     </div>
-    
+
     <form method="get" class="filters">
-        <input type="text" name="search" class="form-control" style="width: 280px;" placeholder="Suche nach Name, Personalnr..." value="{{ request.GET.search }}">
+        <input type="text" name="search" class="form-control" style="width: 280px;"
+            placeholder="Suche nach Name, Personalnr..." value="{{ request.GET.search }}">
         <select name="has_file" class="form-control" style="width: 180px;">
             <option value="">Alle</option>
-            <option value="yes" {% if request.GET.has_file == 'yes' %}selected{% endif %}>Mit Personalakte</option>
-            <option value="no" {% if request.GET.has_file == 'no' %}selected{% endif %}>Ohne Personalakte</option>
+            <option value="yes" {% if request.GET.has_file=='yes' %}selected{% endif %}>Mit Personalakte</option>
+            <option value="no" {% if request.GET.has_file=='no' %}selected{% endif %}>Ohne Personalakte</option>
         </select>
         <button type="submit" class="btn">
             <span class="material-icons" style="font-size: 16px;">search</span>
             Filtern
         </button>
         {% if request.GET.search or request.GET.has_file %}
-            <a href="{% url 'dms:employee_list' %}" class="btn btn-outline">
-                <span class="material-icons" style="font-size: 16px;">clear</span>
-                Zurücksetzen
-            </a>
+        <a href="{% url 'dms:employee_list' %}" class="btn btn-outline">
+            <span class="material-icons" style="font-size: 16px;">clear</span>
+            Zurücksetzen
+        </a>
         {% endif %}
     </form>
 
     {% if employees %}
-    <table>
-        <thead>
-            <tr>
-                <th>Personalnr.</th>
-                <th>Name</th>
-                <th>Abteilung</th>
-                <th>Kostenstelle</th>
-                <th>Eintritt</th>
-                <th>Personalakte</th>
-                <th style="text-align: right;">Aktionen</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for emp in employees %}
-            <tr>
-                <td><span class="file-number">{{ emp.employee_id }}</span></td>
-                <td style="font-weight: 500;">{{ emp.full_name }}</td>
-                <td>{{ emp.department|default:"-" }}</td>
-                <td style="color: var(--text-secondary);">{{ emp.cost_center|default:"-" }}</td>
-                <td style="color: var(--text-secondary);">{{ emp.entry_date|date:"d.m.Y"|default:"-" }}</td>
-                <td>
-                    {% if emp.has_personnel_file %}
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Personalnr.</th>
+                    <th>Name</th>
+                    <th>Abteilung</th>
+                    <th>Kostenstelle</th>
+                    <th>Eintritt</th>
+                    <th>Personalakte</th>
+                    <th style="text-align: right;">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for emp in employees %}
+                <tr>
+                    <td><span class="file-number">{{ emp.employee_id }}</span></td>
+                    <td style="font-weight: 500;">{{ emp.full_name }}</td>
+                    <td>{{ emp.department|default:"-" }}</td>
+                    <td style="color: var(--text-secondary);">{{ emp.cost_center|default:"-" }}</td>
+                    <td style="color: var(--text-secondary);">{{ emp.entry_date|date:"d.m.Y"|default:"-" }}</td>
+                    <td>
+                        {% if emp.has_personnel_file %}
                         <span class="badge badge-active">Vorhanden</span>
-                    {% else %}
+                        {% else %}
                         <span class="badge badge-error">Keine</span>
-                    {% endif %}
-                </td>
-                <td style="text-align: right;">
-                    {% if emp.has_personnel_file %}
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">
+                        {% if emp.has_personnel_file %}
                         <a href="{% url 'dms:personnel_file_detail' pk=emp.personnel_file.pk %}" class="btn btn-sm">
                             <span class="material-icons" style="font-size: 14px;">folder_open</span>
                             Akte öffnen
                         </a>
-                    {% else %}
-                        <a href="{% url 'dms:personnel_file_create' employee_id=emp.pk %}" class="btn btn-sm btn-success">
+                        {% else %}
+                        <a href="{% url 'dms:personnel_file_create' employee_id=emp.pk %}"
+                            class="btn btn-sm btn-success">
                             <span class="material-icons" style="font-size: 14px;">add</span>
                             Akte anlegen
                         </a>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
     {% if employees.has_other_pages %}
     <div class="pagination">
         {% if employees.has_previous %}
-            <a href="?page={{ employees.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.has_file %}&has_file={{ request.GET.has_file }}{% endif %}">
-                <span class="material-icons" style="font-size: 16px; vertical-align: middle;">chevron_left</span>
-                Zurück
-            </a>
+        <a
+            href="?page={{ employees.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.has_file %}&has_file={{ request.GET.has_file }}{% endif %}">
+            <span class="material-icons" style="font-size: 16px; vertical-align: middle;">chevron_left</span>
+            Zurück
+        </a>
         {% endif %}
-        
+
         <span class="current">Seite {{ employees.number }} von {{ employees.paginator.num_pages }}</span>
-        
+
         {% if employees.has_next %}
-            <a href="?page={{ employees.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.has_file %}&has_file={{ request.GET.has_file }}{% endif %}">
-                Weiter
-                <span class="material-icons" style="font-size: 16px; vertical-align: middle;">chevron_right</span>
-            </a>
+        <a
+            href="?page={{ employees.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.has_file %}&has_file={{ request.GET.has_file }}{% endif %}">
+            Weiter
+            <span class="material-icons" style="font-size: 16px; vertical-align: middle;">chevron_right</span>
+        </a>
         {% endif %}
     </div>
     {% endif %}
-    
+
     {% else %}
     <div class="empty-state">
         <span class="material-icons">person_off</span>

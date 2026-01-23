@@ -24,6 +24,8 @@ data/email_archive/*
 !data/*/.gitkeep
 
 # Secrets
+.env
+.env.local
 *.pem
 *.key
 o365_token_*.txt

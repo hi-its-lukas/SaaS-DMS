@@ -7,15 +7,17 @@
 <div class="card">
     <div class="card-header">
         <h2>Personalakten</h2>
-        <span style="color: var(--text-secondary); font-size: 13px;">{{ personnel_files.paginator.count|default:0 }} Akten</span>
+        <span style="color: var(--text-secondary); font-size: 13px;">{{ personnel_files.paginator.count|default:0 }}
+            Akten</span>
     </div>
-    
+
     <form method="get" class="filters">
-        <input type="text" name="search" class="form-control" style="width: 280px;" placeholder="Suche nach Name, Aktenzeichen..." value="{{ request.GET.search }}">
+        <input type="text" name="search" class="form-control" style="width: 280px;"
+            placeholder="Suche nach Name, Aktenzeichen..." value="{{ request.GET.search }}">
         <select name="status" class="form-control" style="width: 160px;">
             <option value="">Alle Status</option>
             {% for value, label in status_choices %}
-                <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+            <option value="{{ value }}" {% if request.GET.status==value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
         </select>
         <button type="submit" class="btn">
@@ -23,72 +25,77 @@
             Filtern
         </button>
         {% if request.GET.search or request.GET.status %}
-            <a href="{% url 'dms:personnel_file_list' %}" class="btn btn-outline">
-                <span class="material-icons" style="font-size: 16px;">clear</span>
-                Zurücksetzen
-            </a>
+        <a href="{% url 'dms:personnel_file_list' %}" class="btn btn-outline">
+            <span class="material-icons" style="font-size: 16px;">clear</span>
+            Zurücksetzen
+        </a>
         {% endif %}
     </form>
 
     {% if personnel_files %}
-    <table>
-        <thead>
-            <tr>
-                <th>Aktenzeichen</th>
-                <th>Mitarbeiter</th>
-                <th>Personalnr.</th>
-                <th>Abteilung</th>
-                <th>Status</th>
-                <th>Dokumente</th>
-                <th>Eröffnet</th>
-                <th style="text-align: right;">Aktionen</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for pf in personnel_files %}
-            <tr>
-                <td><span class="file-number">{{ pf.file_number }}</span></td>
-                <td style="font-weight: 500;">{{ pf.employee.full_name }}</td>
-                <td style="color: var(--text-secondary);">{{ pf.employee.employee_id }}</td>
-                <td>{{ pf.employee.department|default:"-" }}</td>
-                <td>
-                    <span class="badge badge-{% if pf.status == 'ACTIVE' %}active{% elif pf.status == 'ARCHIVED' %}archived{% else %}inactive{% endif %}">
-                        {{ pf.get_status_display }}
-                    </span>
-                </td>
-                <td>{{ pf.document_count }}</td>
-                <td style="color: var(--text-secondary);">{{ pf.opened_at|date:"d.m.Y" }}</td>
-                <td style="text-align: right;">
-                    <a href="{% url 'dms:personnel_file_detail' pk=pf.pk %}" class="btn btn-sm">
-                        <span class="material-icons" style="font-size: 14px;">folder_open</span>
-                        Öffnen
-                    </a>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Aktenzeichen</th>
+                    <th>Mitarbeiter</th>
+                    <th>Personalnr.</th>
+                    <th>Abteilung</th>
+                    <th>Status</th>
+                    <th>Dokumente</th>
+                    <th>Eröffnet</th>
+                    <th style="text-align: right;">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pf in personnel_files %}
+                <tr>
+                    <td><span class="file-number">{{ pf.file_number }}</span></td>
+                    <td style="font-weight: 500;">{{ pf.employee.full_name }}</td>
+                    <td style="color: var(--text-secondary);">{{ pf.employee.employee_id }}</td>
+                    <td>{{ pf.employee.department|default:"-" }}</td>
+                    <td>
+                        <span
+                            class="badge badge-{% if pf.status == 'ACTIVE' %}active{% elif pf.status == 'ARCHIVED' %}archived{% else %}inactive{% endif %}">
+                            {{ pf.get_status_display }}
+                        </span>
+                    </td>
+                    <td>{{ pf.document_count }}</td>
+                    <td style="color: var(--text-secondary);">{{ pf.opened_at|date:"d.m.Y" }}</td>
+                    <td style="text-align: right;">
+                        <a href="{% url 'dms:personnel_file_detail' pk=pf.pk %}" class="btn btn-sm">
+                            <span class="material-icons" style="font-size: 14px;">folder_open</span>
+                            Öffnen
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
     {% if personnel_files.has_other_pages %}
     <div class="pagination">
         {% if personnel_files.has_previous %}
-            <a href="?page={{ personnel_files.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">
-                <span class="material-icons" style="font-size: 16px; vertical-align: middle;">chevron_left</span>
-                Zurück
-            </a>
+        <a
+            href="?page={{ personnel_files.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">
+            <span class="material-icons" style="font-size: 16px; vertical-align: middle;">chevron_left</span>
+            Zurück
+        </a>
         {% endif %}
-        
+
         <span class="current">Seite {{ personnel_files.number }} von {{ personnel_files.paginator.num_pages }}</span>
-        
+
         {% if personnel_files.has_next %}
-            <a href="?page={{ personnel_files.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">
-                Weiter
-                <span class="material-icons" style="font-size: 16px; vertical-align: middle;">chevron_right</span>
-            </a>
+        <a
+            href="?page={{ personnel_files.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">
+            Weiter
+            <span class="material-icons" style="font-size: 16px; vertical-align: middle;">chevron_right</span>
+        </a>
         {% endif %}
     </div>
     {% endif %}
-    
+
     {% else %}
     <div class="empty-state">
         <span class="material-icons">folder_off</span>

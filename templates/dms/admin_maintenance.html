@@ -7,8 +7,10 @@
 {% if messages %}
 <div style="margin-bottom: 24px;">
     {% for message in messages %}
-    <div class="message message-{% if message.tags == 'error' %}error{% elif message.tags == 'warning' %}warning{% else %}success{% endif %}">
-        <span class="material-icons">{% if message.tags == 'error' %}error{% elif message.tags == 'warning' %}warning{% else %}check_circle{% endif %}</span>
+    <div
+        class="message message-{% if message.tags == 'error' %}error{% elif message.tags == 'warning' %}warning{% else %}success{% endif %}">
+        <span class="material-icons">{% if message.tags == 'error' %}error{% elif message.tags == 'warning' %}warning{%
+            else %}check_circle{% endif %}</span>
         <div>{{ message }}</div>
     </div>
     {% endfor %}
@@ -24,7 +26,8 @@
         </div>
         <h3 style="font-size: 18px; margin-bottom: 8px;">Aktenplan erstellen</h3>
         <p style="margin-bottom: 16px;">Erstellt oder aktualisiert die 48 Standard-Kategorien für den HR-Aktenplan</p>
-        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+        <div
+            style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
             <strong>{{ stats.file_categories }}</strong> Aktenkategorien vorhanden
         </div>
         <form method="post" action="{% url 'dms:admin_run_create_filing_plan' %}">
@@ -35,7 +38,7 @@
             </button>
         </form>
     </div>
-    
+
     <div class="stat-card">
         <div class="stat-card-header">
             <div class="stat-card-icon" style="background: #fff3e0; color: #f57c00;">
@@ -44,8 +47,10 @@
         </div>
         <h3 style="font-size: 18px; margin-bottom: 8px;">Kategorien korrigieren</h3>
         <p style="margin-bottom: 16px;">Korrigiert falsche Dokumenttyp-zu-Kategorie-Zuordnungen</p>
-        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
-            <strong>{{ stats.document_types }}</strong> Dokumenttypen, <strong>{{ stats.linked_types }}</strong> verknüpft
+        <div
+            style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+            <strong>{{ stats.document_types }}</strong> Dokumenttypen, <strong>{{ stats.linked_types }}</strong>
+            verknüpft
         </div>
         <form method="post" action="{% url 'dms:admin_run_fix_categories' %}">
             {% csrf_token %}
@@ -55,7 +60,7 @@
             </button>
         </form>
     </div>
-    
+
     <div class="stat-card">
         <div class="stat-card-header">
             <div class="stat-card-icon" style="background: #e8f5e9; color: var(--success);">
@@ -64,8 +69,10 @@
         </div>
         <h3 style="font-size: 18px; margin-bottom: 8px;">Dokumente ablegen</h3>
         <p style="margin-bottom: 16px;">Legt bestehende Dokumente nachträglich in Personalakten ab</p>
-        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
-            <strong>{{ stats.documents_pending }}</strong> Dokumente ohne Akte, <strong>{{ stats.documents_filed }}</strong> abgelegt
+        <div
+            style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+            <strong>{{ stats.documents_pending }}</strong> Dokumente ohne Akte, <strong>{{ stats.documents_filed
+                }}</strong> abgelegt
         </div>
         <form method="post" action="{% url 'dms:admin_run_file_documents' %}">
             {% csrf_token %}
@@ -86,7 +93,8 @@
         </div>
         <h3 style="font-size: 18px; margin-bottom: 8px;">Sage-Archiv scannen</h3>
         <p style="margin-bottom: 16px;">Scannt das Sage-Archiv nach neuen Dokumenten</p>
-        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+        <div
+            style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
             Letzter Scan: <strong>{{ stats.last_scan|default:"Nie" }}</strong>
         </div>
         <form method="post" action="{% url 'dms:admin_run_scan_sage' %}">
@@ -97,7 +105,7 @@
             </button>
         </form>
     </div>
-    
+
     <div class="stat-card">
         <div class="stat-card-header">
             <div class="stat-card-icon" style="background: #ede7f6; color: #7b1fa2;">
@@ -106,18 +114,19 @@
         </div>
         <h3 style="font-size: 18px; margin-bottom: 8px;">Verwaiste Einträge bereinigen</h3>
         <p style="margin-bottom: 16px;">Löscht PersonnelFileEntries ohne gültiges Dokument</p>
-        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+        <div
+            style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
             <strong>{{ stats.orphaned_entries }}</strong> verwaiste Einträge gefunden
         </div>
         <form method="post" action="{% url 'dms:admin_run_cleanup_orphans' %}">
             {% csrf_token %}
-            <button type="submit" class="btn btn-outline" {% if stats.orphaned_entries == 0 %}disabled{% endif %}>
+            <button type="submit" class="btn btn-outline" {% if stats.orphaned_entries==0 %}disabled{% endif %}>
                 <span class="material-icons">delete_sweep</span>
                 Bereinigen
             </button>
         </form>
     </div>
-    
+
     <div class="stat-card">
         <div class="stat-card-header">
             <div class="stat-card-icon" style="background: #e0f7fa; color: #00838f;">
@@ -126,7 +135,8 @@
         </div>
         <h3 style="font-size: 18px; margin-bottom: 8px;">Scan-Sperren zurücksetzen</h3>
         <p style="margin-bottom: 16px;">Setzt hängende Redis-Locks und fehlgeschlagene ScanJobs zurück</p>
-        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+        <div
+            style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
             <strong>{{ stats.stale_scanjobs }}</strong> fehlgeschlagene Jobs
         </div>
         <form method="post" action="{% url 'dms:admin_run_reset_locks' %}">
@@ -148,7 +158,8 @@
         </div>
         <h3 style="font-size: 18px; margin-bottom: 8px;">Sage Dokumenttypen</h3>
         <p style="margin-bottom: 16px;">Erstellt alle Standard-Dokumenttypen für Sage HR-Dokumente</p>
-        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+        <div
+            style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
             <strong>{{ stats.document_types }}</strong> Dokumenttypen vorhanden
         </div>
         <form method="post" action="{% url 'dms:admin_run_create_sage_doctypes' %}">
@@ -159,7 +170,7 @@
             </button>
         </form>
     </div>
-    
+
     <div class="stat-card">
         <div class="stat-card-header">
             <div class="stat-card-icon" style="background: #e8eaf6; color: #3f51b5;">
@@ -168,7 +179,8 @@
         </div>
         <h3 style="font-size: 18px; margin-bottom: 8px;">PDFs aufteilen</h3>
         <p style="margin-bottom: 16px;">Teilt gebündelte Lohn-PDFs nach Mitarbeitern auf (DataMatrix)</p>
-        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+        <div
+            style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
             Verwendet DataMatrix-Codes zur Erkennung
         </div>
         <form method="post" action="{% url 'dms:admin_run_resplit_pdfs' %}">
@@ -179,7 +191,7 @@
             </button>
         </form>
     </div>
-    
+
     <div class="stat-card">
         <div class="stat-card-header">
             <div class="stat-card-icon" style="background: #e1f5fe; color: #0288d1;">
@@ -188,7 +200,8 @@
         </div>
         <h3 style="font-size: 18px; margin-bottom: 8px;">Mitarbeiter reparieren</h3>
         <p style="margin-bottom: 16px;">Korrigiert fehlende oder falsche Mitarbeiter-Zuordnungen</p>
-        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+        <div
+            style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
             Analysiert Dateinamen und Ordnerstruktur
         </div>
         <form method="post" action="{% url 'dms:admin_run_repair_employees' %}">
@@ -210,7 +223,8 @@
         </div>
         <h3 style="font-size: 18px; margin-bottom: 8px;">Perioden aktualisieren</h3>
         <p style="margin-bottom: 16px;">Liest YYYYMM aus Ordnerstruktur und aktualisiert Dokument-Perioden</p>
-        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+        <div
+            style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
             Analysiert Ordnerpfade wie /202501/ oder /2025-01/
         </div>
         <form method="post" action="{% url 'dms:admin_run_update_periods' %}">
@@ -229,7 +243,8 @@
         </div>
         <h3 style="font-size: 18px; margin-bottom: 8px;">Dokumenttypen bereinigen</h3>
         <p style="margin-bottom: 16px;">Zusammenführen von Duplikaten (GROSSBUCHSTABEN → Normal)</p>
-        <div style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
+        <div
+            style="margin-bottom: 12px; padding: 12px; background: var(--surface); border-radius: var(--radius-md); font-size: 13px;">
             Löscht LOHNSCHEINE und verschiebt Dokumente zu Lohnscheine
         </div>
         <form method="post" action="{% url 'dms:admin_run_cleanup_doctypes' %}">
@@ -246,30 +261,32 @@
     <div class="card-header">
         <h2>Systemstatus</h2>
     </div>
-    <table>
-        <tbody>
-            <tr>
-                <td style="font-weight: 500; width: 300px;">Dokumente gesamt</td>
-                <td>{{ stats.total_documents }}</td>
-            </tr>
-            <tr>
-                <td style="font-weight: 500;">Mitarbeiter</td>
-                <td>{{ stats.total_employees }}</td>
-            </tr>
-            <tr>
-                <td style="font-weight: 500;">Personalakten</td>
-                <td>{{ stats.total_personnel_files }}</td>
-            </tr>
-            <tr>
-                <td style="font-weight: 500;">Dokumente in Personalakten</td>
-                <td>{{ stats.documents_filed }}</td>
-            </tr>
-            <tr>
-                <td style="font-weight: 500;">Mandanten</td>
-                <td>{{ stats.total_tenants }}</td>
-            </tr>
-        </tbody>
-    </table>
+    <div class="table-responsive">
+        <table>
+            <tbody>
+                <tr>
+                    <td style="font-weight: 500; width: 300px;">Dokumente gesamt</td>
+                    <td>{{ stats.total_documents }}</td>
+                </tr>
+                <tr>
+                    <td style="font-weight: 500;">Mitarbeiter</td>
+                    <td>{{ stats.total_employees }}</td>
+                </tr>
+                <tr>
+                    <td style="font-weight: 500;">Personalakten</td>
+                    <td>{{ stats.total_personnel_files }}</td>
+                </tr>
+                <tr>
+                    <td style="font-weight: 500;">Dokumente in Personalakten</td>
+                    <td>{{ stats.documents_filed }}</td>
+                </tr>
+                <tr>
+                    <td style="font-weight: 500;">Mandanten</td>
+                    <td>{{ stats.total_tenants }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <div class="card">
@@ -277,38 +294,41 @@
         <h2>Letzte Scan-Jobs</h2>
     </div>
     {% if recent_scanjobs %}
-    <table>
-        <thead>
-            <tr>
-                <th>Gestartet</th>
-                <th>Status</th>
-                <th>Kanal</th>
-                <th>Dateien</th>
-                <th>Dauer</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for job in recent_scanjobs %}
-            <tr>
-                <td style="color: var(--text-secondary);">{{ job.started_at|date:"d.m.Y H:i:s" }}</td>
-                <td>
-                    <span class="badge badge-{% if job.status == 'COMPLETED' %}active{% elif job.status == 'RUNNING' %}unassigned{% else %}error{% endif %}">
-                        {{ job.status }}
-                    </span>
-                </td>
-                <td>{{ job.get_source_display }}</td>
-                <td>{{ job.processed_files }} / {{ job.total_files }}</td>
-                <td>
-                    {% if job.completed_at %}
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Gestartet</th>
+                    <th>Status</th>
+                    <th>Kanal</th>
+                    <th>Dateien</th>
+                    <th>Dauer</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in recent_scanjobs %}
+                <tr>
+                    <td style="color: var(--text-secondary);">{{ job.started_at|date:"d.m.Y H:i:s" }}</td>
+                    <td>
+                        <span
+                            class="badge badge-{% if job.status == 'COMPLETED' %}active{% elif job.status == 'RUNNING' %}unassigned{% else %}error{% endif %}">
+                            {{ job.status }}
+                        </span>
+                    </td>
+                    <td>{{ job.get_source_display }}</td>
+                    <td>{{ job.processed_files }} / {{ job.total_files }}</td>
+                    <td>
+                        {% if job.completed_at %}
                         {{ job.duration_seconds|floatformat:1 }}s
-                    {% else %}
+                        {% else %}
                         -
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
     {% else %}
     <div class="empty-state">
         <span class="material-icons">history</span>

@@ -31,4 +31,8 @@ COPY . .
 
 RUN chmod +x entrypoint.sh
 
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD nc -z localhost 8000 || exit 1
+
 CMD ["./entrypoint.sh"]

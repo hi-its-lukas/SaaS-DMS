@@ -6,7 +6,7 @@ from unfold.admin import ModelAdmin, TabularInline, StackedInline
 from unfold.decorators import display
 from unfold.contrib.filters.admin import RangeDateFilter, DropdownFilter, ChoicesDropdownFilter
 from .models import (
-    Company, Tenant, TenantUser, TenantInvite,
+    Company, Tenant, TenantUser, TenantInvite, CompanyUser,
     Department, CostCenter, Employee, DocumentType, Document, 
     ProcessedFile, Task, SystemLog, SystemSettings,
     ImportedLeaveRequest, ImportedTimesheet,
@@ -85,6 +85,10 @@ class TenantFilterMixin:
             kwargs['queryset'] = Tenant.objects.filter(
                 id=getattr(request, 'tenant', None).id if getattr(request, 'tenant', None) else None
             )
+        # For Company Admins
+        elif db_field.name == 'tenant' and hasattr(request.user, 'company_memberships') and request.user.company_memberships.exists():
+             companies = request.user.company_memberships.values_list('company', flat=True)
+             kwargs['queryset'] = Tenant.objects.filter(company__in=companies)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     def has_module_permission(self, request):
@@ -94,6 +98,11 @@ class TenantFilterMixin:
     
     def has_view_permission(self, request, obj=None):
         if request.user.is_superuser:
+            # Check for support access
+            if obj and hasattr(obj, 'tenant') and obj.tenant and obj.tenant.company:
+                from django.utils import timezone
+                if obj.tenant.company.support_access_granted_until and obj.tenant.company.support_access_granted_until > timezone.now():
+                    return True
             return False
         return super().has_view_permission(request, obj)
     
@@ -122,6 +131,14 @@ class TenantInline(TabularInline):
     show_change_link = True
 
 
+class CompanyUserInline(TabularInline):
+    """Inline for managing Company Administrators."""
+    model = CompanyUser
+    extra = 0
+    fields = ['user', 'is_main_admin']
+    autocomplete_fields = ['user']
+
+
 @admin.register(Company)
 class CompanyAdmin(ModelAdmin):
     """
@@ -139,12 +156,16 @@ class CompanyAdmin(ModelAdmin):
     readonly_fields = ['system_id', 'created_at', 'updated_at', 'created_by',
                        'current_mandanten_display', 'current_users_display', 
                        'current_personnel_files_display']
-    inlines = [TenantInline]
-    actions = ['send_invite_action']
+    inlines = [CompanyUserInline, TenantInline]
+    actions = ['send_invite_action', 'grant_support_to_root']
     
     fieldsets = (
         ('Unternehmen', {
             'fields': ('name', 'description', 'is_active', 'onboarding_status', 'system_id')
+        }),
+        ('Support-Zugriff', {
+            'fields': ('support_access_granted_until', 'support_access_granted_by'),
+            'description': 'Temporärer Zugriff für den Root-Admin (Support-Zwecke).'
         }),
         ('Kontakt', {
             'fields': ('contact_name', 'contact_email'),
@@ -231,6 +252,23 @@ class CompanyAdmin(ModelAdmin):
             sent += 1
         if sent > 0:
             messages.success(request, f"{sent} Einladung(en) gesendet.")
+    
+    @admin.action(description="Support-Zugriff für Root verlängern (24h)")
+    def grant_support_to_root(self, request, queryset):
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        count = 0
+        for company in queryset:
+            # Check if user is company admin or root
+            is_company_admin = company.company_users.filter(user=request.user).exists()
+            if is_company_admin or request.user.is_superuser:
+                company.support_access_granted_until = timezone.now() + timedelta(hours=24)
+                company.support_access_granted_by = request.user
+                company.save(update_fields=['support_access_granted_until', 'support_access_granted_by'])
+                count += 1
+        
+        self.message_user(request, f"Support-Zugriff für {count} Unternehmen aktiviert (24h).")
 
 
 class TenantUserInline(TabularInline):
@@ -249,7 +287,7 @@ class TenantAdmin(ModelAdmin):
     search_fields = ['code', 'name', 'company__name']
     inlines = [TenantUserInline]
     readonly_fields = [
-        'ingest_token', 'ingest_email_display', 'created_at', 'created_by',
+        'ingest_email_display', 'created_at', 'created_by',
         'agent_last_seen', 'agent_version', 'agent_status', 'agent_queue_size', 'agent_ip'
     ]
     
@@ -263,7 +301,7 @@ class TenantAdmin(ModelAdmin):
             'classes': ('collapse',)
         }),
         ('E-Mail-Ingest', {
-            'fields': ('ingest_token', 'ingest_email_display'),
+            'fields': ('ingest_email_display',),
             'description': 'Dokumente an diese E-Mail-Adresse senden, um sie automatisch diesem Mandanten zuzuordnen.'
         }),
         ('DMS Sync Agent Status', {
@@ -276,6 +314,7 @@ class TenantAdmin(ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+    actions = ['reset_token_action']
     
     @display(description="Status", label={"Aktiv": "success", "Inaktiv": "danger"})
     def is_active_badge(self, obj):
@@ -302,9 +341,9 @@ class TenantAdmin(ModelAdmin):
     
     @display(description="Ingest-E-Mail-Adresse")
     def ingest_email_display(self, obj):
-        if obj.ingest_token:
-            return f"upload.{obj.ingest_token}@dms.cloud"
-        return "Token wird beim Speichern automatisch generiert"
+        if obj.ingest_token_hash:
+            return f"upload.[versteckt]@dms.cloud"
+        return "Token wird beim Speichern generiert"
     
     def user_count(self, obj):
         return obj.users.count()
@@ -314,6 +353,25 @@ class TenantAdmin(ModelAdmin):
         if not change:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
+    
+    @admin.action(description="Neuen Ingest-Token generieren")
+    def reset_token_action(self, request, queryset):
+        if queryset.count() != 1:
+            self.message_user(request, "Bitte wählen Sie genau einen Mandanten aus.", level='error')
+            return
+        
+        tenant = queryset.first()
+        new_token = tenant.reset_ingest_token()
+        
+        self.message_user(
+            request, 
+            format_html(
+                "Neuer Token für {} generiert: <strong>{}</strong><br>"
+                "Bitte notieren Sie diesen Token jetzt - er wird nicht erneut angezeigt!",
+                tenant.name, new_token
+            ),
+            level='success'
+        )
 
 
 @admin.register(TenantInvite)

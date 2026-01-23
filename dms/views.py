@@ -1770,3 +1770,99 @@ Datenverarbeitung: Ihre Daten werden ausschließlich in der EU verarbeitet und n
     return render(request, 'dms/accept_invite.html', {
         'invite': invite,
     })
+
+
+@login_required
+@permission_required('dms.view_all_documents', raise_exception=True)
+def gdpr_export(request):
+    """
+    DSGVO Auskunft (Art. 15): Exportiert personenbezogene Daten als JSON.
+    Kann für einen spezifischen User oder Mitarbeiter ausgeführt werden.
+    """
+    import json
+    from django.core.serializers.json import DjangoJSONEncoder
+    from .models import AuditLog
+    
+    target_user_id = request.GET.get('user_id')
+    target_employee_id = request.GET.get('employee_id')
+    
+    if not target_user_id and not target_employee_id:
+        return HttpResponse("Missing user_id or employee_id", status=400)
+        
+    export_data = {
+        'exported_at': timezone.now(),
+        'exported_by': request.user.username,
+        'subject': {}
+    }
+    
+    target_user = None
+    target_employee = None
+    
+    if target_user_id:
+        target_user = get_object_or_404(User, pk=target_user_id)
+        export_data['subject']['user'] = {
+            'username': target_user.username,
+            'email': target_user.email,
+            'first_name': target_user.first_name,
+            'last_name': target_user.last_name,
+            'date_joined': target_user.date_joined,
+            'last_login': target_user.last_login,
+        }
+        
+    if target_employee_id:
+        target_employee = get_object_or_404(Employee, pk=target_employee_id)
+        export_data['subject']['employee'] = {
+            'first_name': target_employee.first_name,
+            'last_name': target_employee.last_name,
+            'email': target_employee.email,
+            'employee_id': target_employee.employee_id,
+            'department': str(target_employee.department) if target_employee.department else None,
+            'entry_date': target_employee.entry_date,
+        }
+    
+    # Audit Logs sammeln
+    logs = []
+    if target_user:
+        user_logs = AuditLog.objects.filter(user=target_user).order_by('-timestamp')
+        for log in user_logs:
+            logs.append({
+                'timestamp': log.timestamp,
+                'action': log.action,
+                'ip_address': log.ip_address,
+                'details': log.details
+            })
+    
+    export_data['audit_logs'] = logs
+    
+    # Dokumente (Metadaten)
+    docs = []
+    if target_employee:
+        employee_docs = Document.objects.filter(employee=target_employee)
+        for doc in employee_docs:
+            docs.append({
+                'title': doc.title,
+                'filename': doc.original_filename,
+                'created_at': doc.created_at,
+                'type': str(doc.document_type) if doc.document_type else None,
+            })
+    
+    if target_user:
+        owned_docs = Document.objects.filter(owner=target_user)
+        for doc in owned_docs:
+            docs.append({
+                'title': doc.title,
+                'filename': doc.original_filename,
+                'created_at': doc.created_at,
+                'relation': 'owner'
+            })
+            
+    export_data['documents'] = docs
+    
+    response = HttpResponse(
+        json.dumps(export_data, cls=DjangoJSONEncoder, indent=2),
+        content_type='application/json'
+    )
+    filename = f"gdpr_export_{target_user_id or target_employee_id}_{timezone.now().strftime('%Y%m%d')}.json"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    return response

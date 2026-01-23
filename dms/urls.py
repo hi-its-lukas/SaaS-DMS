@@ -49,6 +49,7 @@ urlpatterns = [
     
     # System Maintenance
     path('maintenance/', views.admin_maintenance, name='admin_maintenance'),
+    path('maintenance/gdpr-export/', views.gdpr_export, name='gdpr_export'),
     path('maintenance/create-filing-plan/', views.admin_run_create_filing_plan, name='admin_run_create_filing_plan'),
     path('maintenance/link-doctypes/', views.admin_run_link_doctypes, name='admin_run_link_doctypes'),
     path('maintenance/fix-categories/', views.admin_run_fix_categories, name='admin_run_fix_categories'),

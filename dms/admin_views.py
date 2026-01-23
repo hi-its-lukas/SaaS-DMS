@@ -140,7 +140,7 @@ stability_seconds: 5
 heartbeat_interval_seconds: 300
 """
     
-    token_txt = f"{tenant.ingest_token}"
+    token_txt = "BITTE_IM_ADMIN_PANEL_NEU_GENERIEREN"
     
     readme_txt = f"""==============================================
     DMS SYNC AGENT - INSTALLATIONSANLEITUNG
@@ -154,13 +154,13 @@ Mandant: {tenant.name}
 1. Kopieren Sie den kompletten Ordner nach C:\\Programme\\DMSSyncAgent\\
 2. Öffnen Sie eine Administrator-Eingabeaufforderung (als Administrator)
 3. Wechseln Sie in das Verzeichnis: cd C:\\Programme\\DMSSyncAgent
-4. Token installieren: DMSSyncAgent.exe --set-token <Token aus token.txt>
-   (Der Token lautet: {tenant.ingest_token})
+4. Token installieren: DMSSyncAgent.exe --set-token <Ihr-Token>
+   (Generieren Sie einen neuen Token im Admin-Panel unter "Mandanten" -> "Token zurücksetzen")
 5. Dienst installieren: DMSSyncAgent.exe --install
 6. Dienst starten: DMSSyncAgent.exe --start
 
-HINWEIS: Die Datei token.txt enthält Ihren persönlichen Zugangstoken.
-Löschen Sie diese Datei nach der Installation aus Sicherheitsgründen!
+HINWEIS: Der Token wird aus Sicherheitsgründen nicht mehr in dieser Datei gespeichert.
+Bitte generieren Sie einen Token im Admin-Bereich.
 
 2. KONFIGURATION ANPASSEN
 -------------------------
