@@ -1096,115 +1096,114 @@ def _run_sage_scan(task_self):
                                 
                                 split_docs_created = []
                                 for split_info in split_results:
-                                split_path = Path(split_info['file_path'])
-                                emp_id = split_info['employee_id']
-                                mandant_code_dm = split_info.get('mandant_code')
+                                    split_path = Path(split_info['file_path'])
+                                    emp_id = split_info['employee_id']
+                                    mandant_code_dm = split_info.get('mandant_code')
+                                    
+                                    with open(split_path, 'rb') as sf:
+                                        split_content = sf.read()
+                                    split_encrypted = encrypt_data(split_content)
+                                    split_hash = calculate_sha256_chunked(str(split_path))
+                                    split_size = len(split_content)
+                                    
+                                    split_employee = find_employee_by_id(emp_id, tenant=tenant, mandant_code=mandant_code_dm)
+                                    split_status = 'ASSIGNED' if split_employee else 'REVIEW_NEEDED'
+                                    
+                                    doc_type_split, _, category_split, desc_split = classify_sage_document(file_path.name)
+                                    
+                                    split_metadata = {
+                                        'original_path': str(file_path),
+                                        'split_from': file_path.name,
+                                        'employee_id_from_datamatrix': emp_id,
+                                        'pages_in_split': split_info['page_count'],
+                                        'tenant_code': tenant_code,
+                                        'doc_type': doc_type_split,
+                                        'is_personnel_document': True,
+                                        'month_folder': month_folder,
+                                    }
+                                    
+                                    period_year, period_month = parse_month_folder(month_folder)
+                                    split_doc = Document.objects.create(
+                                        tenant=tenant,
+                                        title=split_path.stem,
+                                        original_filename=split_path.name,
+                                        file_extension='.pdf',
+                                        mime_type='application/pdf',
+                                        encrypted_content=split_encrypted,
+                                        file_size=split_size,
+                                        employee=split_employee,
+                                        status=split_status,
+                                        source='SAGE',
+                                        sha256_hash=split_hash,
+                                        metadata=split_metadata,
+                                        period_year=period_year,
+                                        period_month=period_month
+                                    )
+                                    
+                                    auto_classify_document(split_doc, tenant=tenant)
+                                    
+                                    if split_status == 'REVIEW_NEEDED':
+                                        create_review_task(split_doc, source='SAGE_ARCHIVE')
+                                    
+                                    split_docs_created.append(str(split_doc.id))
+                                    
+                                    del split_content
+                                    del split_encrypted
+                                    
+                                    try:
+                                        split_path.unlink()
+                                    except:
+                                        pass
                                 
-                                with open(split_path, 'rb') as sf:
-                                    split_content = sf.read()
-                                split_encrypted = encrypt_data(split_content)
-                                split_hash = calculate_sha256_chunked(str(split_path))
-                                split_size = len(split_content)
-                                
-                                split_employee = find_employee_by_id(emp_id, tenant=tenant, mandant_code=mandant_code_dm)
-                                split_status = 'ASSIGNED' if split_employee else 'REVIEW_NEEDED'
-                                
-                                doc_type_split, _, category_split, desc_split = classify_sage_document(file_path.name)
-                                
-                                split_metadata = {
-                                    'original_path': str(file_path),
-                                    'split_from': file_path.name,
-                                    'employee_id_from_datamatrix': emp_id,
-                                    'pages_in_split': split_info['page_count'],
-                                    'tenant_code': tenant_code,
-                                    'doc_type': doc_type_split,
-                                    'is_personnel_document': True,
-                                    'month_folder': month_folder,
-                                }
-                                
-                                period_year, period_month = parse_month_folder(month_folder)
-                                split_doc = Document.objects.create(
+                                ProcessedFile.objects.create(
                                     tenant=tenant,
-                                    title=split_path.stem,
-                                    original_filename=split_path.name,
-                                    file_extension='.pdf',
-                                    mime_type='application/pdf',
-                                    encrypted_content=split_encrypted,
-                                    file_size=split_size,
-                                    employee=split_employee,
-                                    status=split_status,
-                                    source='SAGE',
-                                    sha256_hash=split_hash,
-                                    metadata=split_metadata,
-                                    period_year=period_year,
-                                    period_month=period_month
+                                    sha256_hash=file_hash,
+                                    original_path=str(file_path),
+                                    document=None
                                 )
                                 
-                                auto_classify_document(split_doc, tenant=tenant)
+                                with hashes_lock:
+                                    if tenant_code not in known_hashes_by_tenant:
+                                        known_hashes_by_tenant[tenant_code] = set()
+                                    known_hashes_by_tenant[tenant_code].add(file_hash)
                                 
-                                # Aufgabe erstellen bei REVIEW_NEEDED
-                                if split_status == 'REVIEW_NEEDED':
-                                    create_review_task(split_doc, source='SAGE_ARCHIVE')
+                                with counter_lock:
+                                    processed_count += len(split_results)
+                                    personnel_docs += len(split_results)
                                 
-                                split_docs_created.append(str(split_doc.id))
-                                
-                                del split_content
-                                del split_encrypted
-                                
-                                try:
-                                    split_path.unlink()
-                                except:
-                                    pass
-                            
-                            ProcessedFile.objects.create(
-                                tenant=tenant,
-                                sha256_hash=file_hash,
-                                original_path=str(file_path),
-                                document=None
-                            )
-                            
-                            with hashes_lock:
-                                if tenant_code not in known_hashes_by_tenant:
-                                    known_hashes_by_tenant[tenant_code] = set()
-                                known_hashes_by_tenant[tenant_code].add(file_hash)
-                            
-                            with counter_lock:
-                                processed_count += len(split_results)
-                                personnel_docs += len(split_results)
-                            
-                            return {'success': True, 'split': True, 'split_count': len(split_results),
-                                    'filename': file_path.name, 'doc_ids': split_docs_created, 'tenant': tenant_code}
-                
-                dm_result = extract_employee_from_datamatrix(str(file_path))
-                dm_mandant_code = dm_result.get('mandant_code')
-                
-                if dm_result['success'] and dm_result['employee_ids']:
-                    is_personnel = True
-                    for emp_id in dm_result['employee_ids']:
-                        employee = find_employee_by_id(emp_id, tenant=tenant, mandant_code=dm_mandant_code)
-                        if employee:
-                            status = 'ASSIGNED'
-                            break
+                                return {'success': True, 'split': True, 'split_count': len(split_results),
+                                        'filename': file_path.name, 'doc_ids': split_docs_created, 'tenant': tenant_code}
                     
-                    if not employee:
+                    dm_result = extract_employee_from_datamatrix(str(file_path))
+                    dm_mandant_code = dm_result.get('mandant_code')
+                    
+                    if dm_result['success'] and dm_result['employee_ids']:
+                        is_personnel = True
+                        for emp_id in dm_result['employee_ids']:
+                            employee = find_employee_by_id(emp_id, tenant=tenant, mandant_code=dm_mandant_code)
+                            if employee:
+                                status = 'ASSIGNED'
+                                break
+                        
+                        if not employee:
+                            needs_review = True
+                            status = 'REVIEW_NEEDED'
+                        
+                        doc_type, _, category, description = classify_sage_document(file_path.name)
+                    elif dm_result['success'] and dm_result['codes']:
+                        is_personnel = True
                         needs_review = True
                         status = 'REVIEW_NEEDED'
-                    
-                    doc_type, _, category, description = classify_sage_document(file_path.name)
-                elif dm_result['success'] and dm_result['codes']:
-                    is_personnel = True
-                    needs_review = True
-                    status = 'REVIEW_NEEDED'
-                    doc_type, _, category, description = classify_sage_document(file_path.name)
+                        doc_type, _, category, description = classify_sage_document(file_path.name)
+                    else:
+                        doc_type, is_personnel, category, description = classify_sage_document(file_path.name)
+                        if is_personnel:
+                            needs_review = True
+                            status = 'REVIEW_NEEDED'
+                        else:
+                            status = 'COMPANY'
                 else:
                     doc_type, is_personnel, category, description = classify_sage_document(file_path.name)
-                    if is_personnel:
-                        needs_review = True
-                        status = 'REVIEW_NEEDED'
-                    else:
-                        status = 'COMPANY'
-            else:
-                doc_type, is_personnel, category, description = classify_sage_document(file_path.name)
                 status = 'COMPANY' if not is_personnel else 'UNASSIGNED'
             
             # Content erst hier laden (nach Split-Check für Memory-Optimierung)
@@ -1287,14 +1286,14 @@ def _run_sage_scan(task_self):
                 else:
                     company_docs += 1
             
-            return {'success': True, 'is_personnel': is_personnel, 'needs_review': needs_review, 
-                    'filename': file_path.name, 'doc_id': str(document.id), 'tenant': tenant_code}
-            
-        except Exception as e:
-            with counter_lock:
-                error_count += 1
-            logger.error(f"Fehler bei {file_path}: {e}")
-            return {'success': False, 'error': str(e), 'filename': file_path.name}
+                return {'success': True, 'is_personnel': is_personnel, 'needs_review': needs_review, 
+                        'filename': file_path.name, 'doc_id': str(document.id), 'tenant': tenant_code}
+                
+            except Exception as e:
+                with counter_lock:
+                    error_count += 1
+                logger.error(f"Fehler bei {file_path}: {e}")
+                return {'success': False, 'error': str(e), 'filename': file_path.name}
     
     # Phase 3: Parallele Verarbeitung mit ThreadPoolExecutor
     # PAPERLESS-NGX Style: max 4 Workers, begrenzt durch CPU-Cores
