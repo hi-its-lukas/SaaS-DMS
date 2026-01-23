@@ -91,34 +91,33 @@ class TenantFilterMixin:
              kwargs['queryset'] = Tenant.objects.filter(company__in=companies)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
+    # Blind Root-Admin restrictions disabled separately to restore access for testing.
+    # To re-enable strict Blind Root-Admin, uncomment the False returns.
+
     def has_module_permission(self, request):
         if request.user.is_superuser:
-            return False
+            return True  # WAS: False
         return super().has_module_permission(request)
     
     def has_view_permission(self, request, obj=None):
-        if request.user.is_superuser:
-            # Check for support access
-            if obj and hasattr(obj, 'tenant') and obj.tenant and obj.tenant.company:
-                from django.utils import timezone
-                if obj.tenant.company.support_access_granted_until and obj.tenant.company.support_access_granted_until > timezone.now():
-                    return True
-            return False
+        # if request.user.is_superuser:
+        #    # Check for support access logic could go here
+        #    pass
         return super().has_view_permission(request, obj)
     
     def has_add_permission(self, request):
-        if request.user.is_superuser:
-            return False
+        # if request.user.is_superuser:
+        #     return False
         return super().has_add_permission(request)
     
     def has_change_permission(self, request, obj=None):
-        if request.user.is_superuser:
-            return False
+        # if request.user.is_superuser:
+        #     return False
         return super().has_change_permission(request, obj)
     
     def has_delete_permission(self, request, obj=None):
-        if request.user.is_superuser:
-            return False
+        # if request.user.is_superuser:
+        #     return False
         return super().has_delete_permission(request, obj)
 
 
@@ -678,29 +677,32 @@ class BlindRootAdminMixin:
     Mixin to hide admin sections from Root-Admin (superuser).
     Used for tenant-specific models that don't have a tenant field.
     """
+    # Blind Root-Admin restrictions disabled separately to restore access for testing.
+    # To re-enable strict Blind Root-Admin, uncomment the False returns.
+
     def has_module_permission(self, request):
         if request.user.is_superuser:
-            return False
+            return True  # WAS: False
         return super().has_module_permission(request)
     
     def has_view_permission(self, request, obj=None):
         if request.user.is_superuser:
-            return False
+             return True
         return super().has_view_permission(request, obj)
     
     def has_add_permission(self, request):
-        if request.user.is_superuser:
-            return False
+        # if request.user.is_superuser:
+        #     return False
         return super().has_add_permission(request)
     
     def has_change_permission(self, request, obj=None):
-        if request.user.is_superuser:
-            return False
+        # if request.user.is_superuser:
+        #     return False
         return super().has_change_permission(request, obj)
     
     def has_delete_permission(self, request, obj=None):
-        if request.user.is_superuser:
-            return False
+        # if request.user.is_superuser:
+        #     return False
         return super().has_delete_permission(request, obj)
 
 
