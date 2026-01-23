@@ -1090,16 +1090,64 @@
     }
 </style>
 <script>
-    // AdminLTE Sidebar-Klassen entfernen um margin-left zu verhindern
     document.addEventListener('DOMContentLoaded', function () {
-        document.body.classList.remove('sidebar-mini', 'sidebar-collapse', 'sidebar-mini-md', 'sidebar-closed', 'sidebar-open');
-        document.body.style.marginLeft = '0';
-        document.body.style.paddingLeft = '0';
+        // 1. Remove Sidebar styles (existing fix)
+        if (document.body) {
+            document.body.classList.remove('sidebar-mini', 'sidebar-collapse', 'sidebar-mini-md', 'sidebar-closed', 'sidebar-open');
+            document.body.style.marginLeft = '0';
+            document.body.style.paddingLeft = '0';
+        }
+
+        // 2. NUCLEAR SEARCH REMOVAL
+        function nukeSearch() {
+            // Unfold Search Modal Selectors (Best Guesses based on standard Tailwind/Unfold patterns)
+            const selectors = [
+                '#search-modal',
+                'dialog#search',
+                'div[data-controller="search"]',
+                'div[data-action*="keydown.meta+k"]',
+                '.search-modal-overlay',
+                'div.fixed.inset-0.z-50.flex' // Specific Tailwind wrapper often used by Unfold modals
+            ];
+
+            selectors.forEach(sel => {
+                document.querySelectorAll(sel).forEach(el => {
+                    // Safety check: specific content or ID to avoid deleting wrong modals
+                    if (el.id.includes('search') || el.innerHTML.toLowerCase().includes('search') || el.innerHTML.toLowerCase().includes('suche')) {
+                        console.log('Search element destroyed:', el);
+                        el.remove();
+                    }
+                });
+            });
+        }
+
+        // Run immediately
+        nukeSearch();
+
+        // Run repeatedly just in case
+        setInterval(nukeSearch, 500);
+
+        // 3. Disable Keyboard Shortcut (Cmd+K / Ctrl+K)
+        document.addEventListener('keydown', function (e) {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Search shortcut blocked.');
+            }
+        }, true);
+
+        // 4. Observer
+        const observer = new MutationObserver((mutations) => {
+            nukeSearch();
+        });
+
+        if (document.body) {
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        }
     });
-    // Auch sofort ausführen falls DOM schon geladen
-    if (document.body) {
-        document.body.classList.remove('sidebar-mini', 'sidebar-collapse', 'sidebar-mini-md', 'sidebar-closed', 'sidebar-open');
-    }
 </script>
 {% endblock %}
 
