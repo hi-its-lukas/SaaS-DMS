@@ -1086,16 +1086,16 @@ def _run_sage_scan(task_self):
                     
                     if page_count > 1:
                         doc_type, is_personnel_type, _, _ = classify_sage_document(file_path.name)
-                    if is_personnel_type:
-                        split_output_dir = Path(settings.BASE_DIR) / 'data' / 'split_temp' / tenant_code
-                        split_results = split_pdf_by_datamatrix(str(file_path), str(split_output_dir))
-                        
-                        if split_results and len(split_results) > 1:
-                            log_system_event('INFO', 'SageScanner', 
-                                f"PDF aufgeteilt: {file_path.name} → {len(split_results)} Dokumente")
+                        if is_personnel_type:
+                            split_output_dir = Path(settings.BASE_DIR) / 'data' / 'split_temp' / tenant_code
+                            split_results = split_pdf_by_datamatrix(str(file_path), str(split_output_dir))
                             
-                            split_docs_created = []
-                            for split_info in split_results:
+                            if split_results and len(split_results) > 1:
+                                log_system_event('INFO', 'SageScanner', 
+                                    f"PDF aufgeteilt: {file_path.name} → {len(split_results)} Dokumente")
+                                
+                                split_docs_created = []
+                                for split_info in split_results:
                                 split_path = Path(split_info['file_path'])
                                 emp_id = split_info['employee_id']
                                 mandant_code_dm = split_info.get('mandant_code')
