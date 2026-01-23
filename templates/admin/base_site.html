@@ -101,10 +101,7 @@
         box-sizing: border-box;
     }
 
-    /* Nav-Sidebar und Jazzmin/AdminLTE Layout-Fixes */
-    #nav-sidebar {
-        display: none !important;
-    }
+    /* Nav-Sidebar Fix removed */
 
     body.nav-sidebar {
         padding-left: 0 !important;
@@ -157,20 +154,7 @@
         padding-left: 0 !important;
     }
 
-    /* Jazzmin/AdminLTE Sidebar komplett verstecken - ALLE Breakpoints */
-    /* WICHTIG: Nur Jazzmin-spezifische Elemente, NICHT Unfold! */
-    .main-sidebar:not([data-unfold-sidebar]),
-    aside.main-sidebar,
-    .sidebar-overlay,
-    #sidebar-overlay,
-    #nav-sidebar {
-        display: none !important;
-        width: 0 !important;
-        min-width: 0 !important;
-        max-width: 0 !important;
-        left: -300px !important;
-        transform: translateX(-100%) !important;
-    }
+    /* Jazzmin Sidebar hiding removed to allow Unfold sidebar */
 
     /* Unfold Sidebar IMMER sichtbar halten - auch eingeklappt */
     [data-controller="sidebar"],
